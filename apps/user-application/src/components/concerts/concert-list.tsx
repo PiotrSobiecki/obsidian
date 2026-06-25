@@ -13,8 +13,8 @@ export function ConcertList({ events }: ConcertListProps) {
           Brak koncertów w wybranym okresie
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Koncerty klubowe i festiwale rock/metal — tylko zebrane wydarzenia z linkiem
-          do zakupu biletów, gdy jest dostępny. Spróbuj szerszego zakresu lub innego miasta.
+          Pokazujemy koncerty klubowe i festiwale rock/metal zebrane z oficjalnych
+          źródeł. Spróbuj szerszego zakresu dat lub innego miasta.
         </p>
       </div>
     );
