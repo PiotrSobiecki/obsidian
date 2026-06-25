@@ -5,11 +5,10 @@ import { searchWeb } from "../tools/web-search";
 import { fetchPage, stripHtml } from "../tools/fetch-page";
 import { classifySearchResult, resolveSourceStatus } from "../tools/parse-events";
 import { buildDiscoveryQueries } from "../lib/genre-policy";
-import type { WorkerBindings } from "../types";
+import type { DiscoveryCityMessage, WorkerBindings } from "../types";
 
-// Mało miast na przebieg — przy 50 wynikach/zapytanie i limicie Brave 1/s
-// jeden batch musi domknąć się w limitach Workera. Kolejka rotuje po miastach
-// (lastProcessedAt NULLS FIRST), więc z tygodnia na tydzień pokryje wszystkie.
+// Inline /admin/discover bez kolejki — ile miast przerobić w jednym żądaniu.
+// Główna ścieżka (cron) używa kolejki: 1 miasto = 1 wywołanie Workera.
 export const DISCOVERY_BATCH_SIZE = 2;
 
 async function verifyCityClubSources(
@@ -60,13 +59,132 @@ async function verifyCityClubSources(
   return { venuesChecked, venuesDeactivated };
 }
 
-export async function executeDiscovery(env: WorkerBindings) {
+/**
+ * Przetwarza JEDNO miasto: weryfikacja klubów + Brave Search + klasyfikacja +
+ * zapis nowych źródeł. Wołane per komunikat kolejki (1 miasto = 1 wywołanie),
+ * więc mieści się w limitach Workera niezależnie od liczby miast.
+ */
+export async function discoverCity(
+  env: WorkerBindings,
+  city: DiscoveryCityMessage
+) {
   const db = getDb(env);
   const startedAt = new Date();
+  const { cityId, cityName, citySlug } = city;
   let sourcesAdded = 0;
-  let citiesProcessed = 0;
-  let venuesChecked = 0;
-  let venuesDeactivated = 0;
+
+  const verify = await verifyCityClubSources(db, cityId, env);
+
+  const apiKey = env.BRAVE_SEARCH_API_KEY;
+  if (!apiKey) {
+    console.warn(
+      `[discovery] ${cityName}: brak BRAVE_SEARCH_API_KEY — tylko weryfikacja klubów`
+    );
+  } else {
+    const queries = buildDiscoveryQueries(cityName, citySlug);
+    console.log(`[discovery] ${cityName}: ${queries.length} zapytań Brave`);
+
+    for (const query of queries) {
+      const results = await searchWeb(query, apiKey);
+      await new Promise((r) => setTimeout(r, 300));
+
+      for (const result of results) {
+        try {
+          const classified = await classifySearchResult(env.AI, result, cityName);
+          if (!classified) continue;
+
+          const existing = await db
+            .select({ id: sources.id })
+            .from(sources)
+            .where(eq(sources.url, classified.url))
+            .limit(1);
+
+          if (existing.length > 0) continue;
+
+          await db.insert(sources).values({
+            cityId,
+            url: classified.url,
+            type: classified.type,
+            platform: classified.platform,
+            status: resolveSourceStatus(classified, result.url),
+            trustScore: classified.trust_score,
+            lastDiscoveredAt: new Date(),
+          });
+
+          sourcesAdded++;
+          console.log(`[discovery] + źródło: ${classified.platform} ${classified.url}`);
+        } catch (error) {
+          console.warn(`[discovery] Pominięto wynik ${result.url}:`, error);
+        }
+      }
+    }
+  }
+
+  await db
+    .update(cityBatchQueue)
+    .set({ lastProcessedAt: new Date() })
+    .where(
+      and(
+        eq(cityBatchQueue.cityId, cityId),
+        eq(cityBatchQueue.agentType, "discovery")
+      )
+    );
+
+  await db.insert(ingestionRuns).values({
+    agentType: "discovery",
+    startedAt,
+    finishedAt: new Date(),
+    statsJson: {
+      city: cityName,
+      sourcesAdded,
+      venuesChecked: verify.venuesChecked,
+      venuesDeactivated: verify.venuesDeactivated,
+      braveSearch: !!apiKey,
+    },
+  });
+
+  const result = { cityName, sourcesAdded, ...verify };
+  console.log("[discovery] Miasto gotowe:", result);
+  return result;
+}
+
+/** Producer: wrzuca po jednym komunikacie na każde miasto do kolejki discovery. */
+export async function enqueueDiscovery(env: WorkerBindings): Promise<number> {
+  const db = getDb(env);
+
+  const rows = await db
+    .select({
+      cityId: cityBatchQueue.cityId,
+      cityName: cities.name,
+      citySlug: cities.slug,
+    })
+    .from(cityBatchQueue)
+    .innerJoin(cities, eq(cityBatchQueue.cityId, cities.id))
+    .where(eq(cityBatchQueue.agentType, "discovery"))
+    .orderBy(
+      asc(cityBatchQueue.batchOrder),
+      sql`${cityBatchQueue.lastProcessedAt} ASC NULLS FIRST`
+    );
+
+  const messages = rows.map((r) => ({
+    body: { cityId: r.cityId, cityName: r.cityName, citySlug: r.citySlug },
+  }));
+
+  // sendBatch: maks. 100 komunikatów na żądanie.
+  for (let i = 0; i < messages.length; i += 100) {
+    await env.DISCOVERY_QUEUE.sendBatch(messages.slice(i, i + 100));
+  }
+
+  console.log(`[discovery] Wrzucono do kolejki ${messages.length} miast`);
+  return messages.length;
+}
+
+/**
+ * Inline discovery bez kolejki — przetwarza mały batch miast synchronicznie.
+ * Używane przez /admin/discover do szybkich testów; cron używa kolejki.
+ */
+export async function executeDiscovery(env: WorkerBindings) {
+  const db = getDb(env);
 
   const cityBatch = await db
     .select({
@@ -83,93 +201,20 @@ export async function executeDiscovery(env: WorkerBindings) {
     )
     .limit(DISCOVERY_BATCH_SIZE);
 
-  const apiKey = env.BRAVE_SEARCH_API_KEY;
-  if (!apiKey) {
-    console.warn(
-      "[discovery] Brak BRAVE_SEARCH_API_KEY — tylko weryfikacja klubów, bez Brave Search"
-    );
-  }
+  let citiesProcessed = 0;
+  let sourcesAdded = 0;
+  let venuesChecked = 0;
+  let venuesDeactivated = 0;
 
-  console.log(`[discovery] Start: ${cityBatch.length} miast`);
-
-  for (const { cityId, cityName, citySlug } of cityBatch) {
+  for (const city of cityBatch) {
+    const r = await discoverCity(env, city);
     citiesProcessed++;
-
-    const verify = await verifyCityClubSources(db, cityId, env);
-    venuesChecked += verify.venuesChecked;
-    venuesDeactivated += verify.venuesDeactivated;
-
-    if (apiKey) {
-      const queries = buildDiscoveryQueries(cityName, citySlug);
-      console.log(`[discovery] Brave Search: ${cityName} (${queries.length} zapytań)`);
-
-      for (const query of queries) {
-        const results = await searchWeb(query, apiKey);
-        await new Promise((r) => setTimeout(r, 300));
-
-        for (const result of results) {
-          try {
-            const classified = await classifySearchResult(env.AI, result, cityName);
-            if (!classified) continue;
-
-            const existing = await db
-              .select({ id: sources.id })
-              .from(sources)
-              .where(eq(sources.url, classified.url))
-              .limit(1);
-
-            if (existing.length > 0) continue;
-
-            await db.insert(sources).values({
-              cityId,
-              url: classified.url,
-              type: classified.type,
-              platform: classified.platform,
-              status: resolveSourceStatus(classified, result.url),
-              trustScore: classified.trust_score,
-              lastDiscoveredAt: new Date(),
-            });
-
-            sourcesAdded++;
-            console.log(`[discovery] + źródło: ${classified.platform} ${classified.url}`);
-          } catch (error) {
-            console.warn(`[discovery] Pominięto wynik ${result.url}:`, error);
-          }
-        }
-      }
-    }
-
-    await db
-      .update(cityBatchQueue)
-      .set({ lastProcessedAt: new Date() })
-      .where(
-        and(
-          eq(cityBatchQueue.cityId, cityId),
-          eq(cityBatchQueue.agentType, "discovery")
-        )
-      );
+    sourcesAdded += r.sourcesAdded;
+    venuesChecked += r.venuesChecked;
+    venuesDeactivated += r.venuesDeactivated;
   }
 
-  await db.insert(ingestionRuns).values({
-    agentType: "discovery",
-    startedAt,
-    finishedAt: new Date(),
-    statsJson: {
-      citiesProcessed,
-      sourcesAdded,
-      venuesChecked,
-      venuesDeactivated,
-      batchSize: DISCOVERY_BATCH_SIZE,
-      braveSearch: !!apiKey,
-    },
-  });
-
-  const result = {
-    citiesProcessed,
-    sourcesAdded,
-    venuesChecked,
-    venuesDeactivated,
-  };
-  console.log("[discovery] Done:", result);
+  const result = { citiesProcessed, sourcesAdded, venuesChecked, venuesDeactivated };
+  console.log("[discovery] Inline done:", result);
   return result;
 }

@@ -49,6 +49,23 @@
 			"0 5 * * *"
 		]
 	},
+	"queues": {
+		"producers": [
+			{
+				"binding": "DISCOVERY_QUEUE",
+				"queue": "obsidian-discovery"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "obsidian-discovery",
+				"max_batch_size": 1,
+				"max_concurrency": 1,
+				"max_retries": 3,
+				"dead_letter_queue": "obsidian-discovery-dlq"
+			}
+		]
+	},
 	"env": {
 		"production": {
 			"name": "obsidian-data-service",
@@ -92,6 +109,23 @@
 				"crons": [
 					"0 3 * * 1",
 					"0 5 * * *"
+				]
+			},
+			"queues": {
+				"producers": [
+					{
+						"binding": "DISCOVERY_QUEUE",
+						"queue": "obsidian-discovery"
+					}
+				],
+				"consumers": [
+					{
+						"queue": "obsidian-discovery",
+						"max_batch_size": 1,
+						"max_concurrency": 1,
+						"max_retries": 3,
+						"dead_letter_queue": "obsidian-discovery-dlq"
+					}
 				]
 			}
 		}

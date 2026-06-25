@@ -4,7 +4,7 @@ import { cors } from "hono/cors";
 import { getDb } from "./db/client";
 import { cities, events, ingestionRuns, sources, venues } from "./db/schema";
 import { executeCollection } from "./cron/daily-collect";
-import { executeDiscovery } from "./cron/weekly-discovery";
+import { enqueueDiscovery, executeDiscovery } from "./cron/weekly-discovery";
 import { resolveEventDateRange } from "./lib/date-range";
 import { hasEventSource } from "./lib/real-events";
 import { sanitizeTicketUrl, ticketProviderLabel } from "./lib/ticket-url";
@@ -301,6 +301,22 @@ app.post("/admin/discover", async (c) => {
   } catch (error) {
     console.error("POST /admin/discover error:", error);
     return c.json({ error: "Discovery failed" }, 500);
+  }
+});
+
+// Wrzuca wszystkie miasta do kolejki discovery (consumer przerobi je w tle,
+// 1 miasto = 1 wywołanie Workera). To samo robi tygodniowy cron.
+app.post("/admin/discover/enqueue", async (c) => {
+  if (!requireAdmin(c)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const enqueued = await enqueueDiscovery(c.env);
+    return c.json({ ok: true, enqueued });
+  } catch (error) {
+    console.error("POST /admin/discover/enqueue error:", error);
+    return c.json({ error: "Enqueue failed" }, 500);
   }
 });
 
