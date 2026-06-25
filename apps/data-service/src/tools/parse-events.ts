@@ -411,18 +411,24 @@ export async function classifySearchResult(
     };
   }
 
-  const response = await ai.run(WORKERS_AI_MODEL, {
-    messages: [
-      {
-        role: "system",
-        content: buildClassifySourcePrompt(cityName),
-      },
-      {
-        role: "user",
-        content: JSON.stringify(result),
-      },
-    ],
-  });
+  let response: unknown;
+  try {
+    response = await ai.run(WORKERS_AI_MODEL, {
+      messages: [
+        {
+          role: "system",
+          content: buildClassifySourcePrompt(cityName),
+        },
+        {
+          role: "user",
+          content: JSON.stringify(result),
+        },
+      ],
+    });
+  } catch (error) {
+    console.warn("[classify] AI failed, pomijam wynik:", error);
+    return null;
+  }
 
   const text =
     typeof response === "object" && response !== null && "response" in response

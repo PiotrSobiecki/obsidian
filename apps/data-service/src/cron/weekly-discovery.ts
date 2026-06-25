@@ -48,7 +48,7 @@ async function verifyCityClubSources(
       venuesDeactivated++;
       await db
         .update(sources)
-        .set({ status: "inactive", updatedAt: new Date() })
+        .set({ status: "inactive" })
         .where(eq(sources.id, src.id));
       console.warn(`[discovery] Dezaktywowano klub ${src.url}:`, error);
     }
@@ -105,29 +105,33 @@ export async function executeDiscovery(env: WorkerBindings) {
         await new Promise((r) => setTimeout(r, 300));
 
         for (const result of results) {
-          const classified = await classifySearchResult(env.AI, result, cityName);
-          if (!classified) continue;
+          try {
+            const classified = await classifySearchResult(env.AI, result, cityName);
+            if (!classified) continue;
 
-          const existing = await db
-            .select({ id: sources.id })
-            .from(sources)
-            .where(eq(sources.url, classified.url))
-            .limit(1);
+            const existing = await db
+              .select({ id: sources.id })
+              .from(sources)
+              .where(eq(sources.url, classified.url))
+              .limit(1);
 
-          if (existing.length > 0) continue;
+            if (existing.length > 0) continue;
 
-          await db.insert(sources).values({
-            cityId,
-            url: classified.url,
-            type: classified.type,
-            platform: classified.platform,
-            status: resolveSourceStatus(classified, result.url),
-            trustScore: classified.trust_score,
-            lastDiscoveredAt: new Date(),
-          });
+            await db.insert(sources).values({
+              cityId,
+              url: classified.url,
+              type: classified.type,
+              platform: classified.platform,
+              status: resolveSourceStatus(classified, result.url),
+              trustScore: classified.trust_score,
+              lastDiscoveredAt: new Date(),
+            });
 
-          sourcesAdded++;
-          console.log(`[discovery] + źródło: ${classified.platform} ${classified.url}`);
+            sourcesAdded++;
+            console.log(`[discovery] + źródło: ${classified.platform} ${classified.url}`);
+          } catch (error) {
+            console.warn(`[discovery] Pominięto wynik ${result.url}:`, error);
+          }
         }
       }
     }

@@ -8,38 +8,101 @@ import { ROCK_METAL_FESTIVALS } from "./festival-scene";
 
 export const GENRE_POLICY = {
   include: [
+    // --- ogólne ---
     "rock",
     "metal",
-    "heavy metal",
-    "death metal",
-    "black metal",
-    "thrash",
-    "doom",
-    "hardcore",
-    "punk",
-    "hard rock",
-    "alternative",
-    "grunge",
-    "stoner",
-    "prog",
-    "post-rock",
-    "metalcore",
-    "deathcore",
-    "industrial",
-    "gothic",
-    "nu metal",
-    "folk metal",
-    "power metal",
-    "symphonic metal",
-    "psychodeliczny rock",
-    "stoner rock",
-    "sludge",
-    "grindcore",
-    "post-metal",
-    "blackgaze",
-    "dungeon synth",
     "festiwal",
     "festival",
+    // --- rock ---
+    "hard rock",
+    "classic rock",
+    "alternative",
+    "alternative rock",
+    "indie rock",
+    "grunge",
+    "punk rock",
+    "post-rock",
+    "progressive rock",
+    "prog rock",
+    "prog",
+    "psychedelic rock",
+    "psychodeliczny rock",
+    "garage rock",
+    "southern rock",
+    "glam rock",
+    "art rock",
+    "space rock",
+    "noise rock",
+    "math rock",
+    "krautrock",
+    "surf rock",
+    "gothic rock",
+    "shoegaze",
+    "stoner rock",
+    "desert rock",
+    "stoner",
+    // --- metal ---
+    "heavy metal",
+    "true metal",
+    "speed metal",
+    "thrash",
+    "thrash metal",
+    "crossover thrash",
+    "groove metal",
+    "power metal",
+    "death metal",
+    "melodic death metal",
+    "technical death metal",
+    "brutal death metal",
+    "black metal",
+    "atmospheric black metal",
+    "symphonic black metal",
+    "depressive black metal",
+    "blackened",
+    "doom",
+    "doom metal",
+    "funeral doom",
+    "stoner metal",
+    "sludge",
+    "sludge metal",
+    "gothic metal",
+    "symphonic metal",
+    "folk metal",
+    "viking metal",
+    "pagan metal",
+    "nu metal",
+    "industrial",
+    "industrial metal",
+    "metalcore",
+    "deathcore",
+    "mathcore",
+    "grindcore",
+    "goregrind",
+    "djent",
+    "progressive metal",
+    "prog metal",
+    "avant-garde metal",
+    "post-metal",
+    "blackgaze",
+    "drone",
+    "drone metal",
+    "gothic",
+    "dungeon synth",
+    // --- punk / hardcore ---
+    "hardcore",
+    "punk",
+    "hardcore punk",
+    "post-hardcore",
+    "melodic hardcore",
+    "crust",
+    "crust punk",
+    "d-beat",
+    "powerviolence",
+    "street punk",
+    "skate punk",
+    "anarcho punk",
+    "screamo",
+    "emocore",
   ],
   exclude: [
     "disco",
@@ -105,7 +168,7 @@ export function buildDiscoveryQueries(
 
   const clubs = citySlug ? CLUBS_BY_CITY_SLUG[citySlug] : undefined;
   if (clubs) {
-    for (const club of clubs.slice(0, 4)) {
+    for (const club of clubs.slice(0, 6)) {
       queries.push(`"${club}" koncerty ${cityName}`);
       queries.push(`site:facebook.com/events ${club} ${cityName}`);
     }
@@ -118,7 +181,11 @@ export function buildDiscoveryQueries(
 export const DISCOVERY_SEARCH_QUERIES = (cityName: string) =>
   buildDiscoveryQueries(cityName);
 
-export const LLM_GENRE_RULES = `INCLUDE only: rock, metal and related subgenres (heavy, death, black, thrash, doom, hardcore, punk, hard rock, alternative, grunge, stoner, prog, post-rock, metalcore, industrial, gothic, folk metal, power metal, symphonic metal, sludge, grindcore, post-metal) AND rock/metal festivals (festiwale).
+export const LLM_GENRE_RULES = `INCLUDE all rock and metal subgenres and related scenes:
+- ROCK: classic/hard rock, alternative, indie rock, grunge, progressive rock, psychedelic, garage, southern, glam, art rock, space rock, noise rock, math rock, krautrock, gothic rock, shoegaze, stoner/desert rock, post-rock.
+- METAL: heavy, speed, thrash (+crossover), groove, power, death (incl. melodic/technical/brutal), black (incl. atmospheric/symphonic/depressive), doom (incl. funeral), stoner/sludge metal, gothic, symphonic, folk/viking/pagan metal, nu metal, industrial, metalcore, deathcore, mathcore, grindcore/goregrind, djent, progressive/avant-garde metal, post-metal, blackgaze, drone.
+- PUNK/HARDCORE: punk, hardcore, hardcore punk, post-hardcore, melodic hardcore, crust, d-beat, powerviolence, street/skate/anarcho punk, screamo.
+- Plus rock/metal festivals (festiwale).
 
 EXCLUDE entirely: disco, disco polo, ethno, folklor, world music, jazz, blues, classical, opera, musical, kabaret, stand-up, DJ/techno/house/trance/EDM, hip-hop, rap, R&B, mainstream pop, children's events, weddings, party nights. Folk metal and pagan metal are INCLUDED. Reject pop/ethno/disco festivals.
 

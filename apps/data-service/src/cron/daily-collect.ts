@@ -91,7 +91,7 @@ export async function executeCollection(
           cityName: source.cityName,
           sourceType: source.type,
           sourceUrl: source.url,
-          venueName: source.platform,
+          venueName: source.platform ?? undefined,
         },
         html
       );
