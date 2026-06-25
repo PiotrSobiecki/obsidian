@@ -1,0 +1,57 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+coverage
+
+# next.js
+.next/
+out/
+.open-next/
+
+# production
+build
+dist
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env — sekrety (szablony *.example są commitowane)
+.env.dev
+.env.production
+.env.local
+.dev.vars
+.production.vars
+
+# vercel
+.vercel
+
+# wrangler
+.wrangler
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# legacy folder (po rename na user-application)
+apps/web/
+
+# migracja pnpm / scraped tool dumps
+.pnpm-migration-backup/
+agent-tools-*.html

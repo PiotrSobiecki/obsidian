@@ -1,0 +1,33 @@
+{
+  "name": "obsidian",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:user-application": "pnpm --filter @obsidian/user-application dev",
+    "dev:data-service": "pnpm --filter @obsidian/data-service dev",
+    "dev": "pnpm dev:user-application",
+    "dev:all": "pnpm run --parallel dev:user-application dev:data-service",
+    "build": "pnpm --filter @obsidian/user-application build",
+    "build:data-service": "pnpm --filter @obsidian/data-service build",
+    "lint": "pnpm --filter @obsidian/user-application lint",
+    "db:generate": "pnpm db:generate:dev",
+    "db:generate:dev": "pnpm --filter @obsidian/data-service db:generate:dev",
+    "db:generate:prod": "pnpm --filter @obsidian/data-service db:generate:prod",
+    "db:migrate": "pnpm db:migrate:dev",
+    "db:migrate:dev": "pnpm --filter @obsidian/data-service db:migrate:dev",
+    "db:migrate:prod": "pnpm --filter @obsidian/data-service db:migrate:prod",
+    "db:seed": "pnpm db:seed:dev",
+    "db:seed:dev": "pnpm --filter @obsidian/data-service db:seed:dev",
+    "db:seed:prod": "pnpm --filter @obsidian/data-service db:seed:prod",
+    "collect:dev": "pnpm --filter @obsidian/data-service collect:dev",
+    "discover:dev": "pnpm --filter @obsidian/data-service discover:dev",
+    "ingest:dev": "pnpm --filter @obsidian/data-service ingest:dev"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "workerd"
+    ]
+  }
+}

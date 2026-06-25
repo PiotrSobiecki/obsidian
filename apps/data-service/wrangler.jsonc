@@ -1,0 +1,58 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "obsidian-data-service",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ENVIRONMENT": "development"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "REPLACE_WITH_HYPERDRIVE_ID",
+      "localConnectionString": "postgresql://localhost:5432/obsidian"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "browser": {
+    "binding": "BROWSER"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DISCOVERY_AGENT",
+        "class_name": "DiscoveryAgent"
+      },
+      {
+        "name": "COLLECTOR_AGENT",
+        "class_name": "CollectorAgent"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["DiscoveryAgent", "CollectorAgent"]
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * 1", "0 5 * * *"]
+  },
+  "env": {
+    "production": {
+      "name": "obsidian-data-service",
+      "vars": {
+        "ENVIRONMENT": "production"
+      },
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "REPLACE_WITH_PRODUCTION_HYPERDRIVE_ID"
+        }
+      ]
+    }
+  }
+}
