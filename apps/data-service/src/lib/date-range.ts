@@ -46,15 +46,18 @@ export function resolveEventDateRange(
   const baseDate = from ? parseLocalDate(from) : todayStart();
   const today = todayStart();
 
-  if (range === "3days") {
+  // Domyślnie (brak range/from/to) — okno 3 miesięcy do przodu.
+  const effectiveRange = !range && !from && !to ? "3months" : range;
+
+  if (effectiveRange === "3days") {
     return daysFromDate(baseDate, 3);
   }
 
-  if (range === "7days") {
+  if (effectiveRange === "7days") {
     return daysFromDate(baseDate, 7);
   }
 
-  if (range === "3months") {
+  if (effectiveRange === "3months") {
     const dateFrom = notBeforeToday(baseDate);
     const dateTo = new Date(dateFrom);
     dateTo.setMonth(dateTo.getMonth() + 3);

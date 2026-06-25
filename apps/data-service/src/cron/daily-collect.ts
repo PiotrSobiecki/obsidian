@@ -10,6 +10,8 @@ import type { WorkerBindings } from "../types";
 /** Kluby i festiwale mają pierwszeństwo — agregatory rock/metal jako uzupełnienie. */
 export const COLLECTOR_MAX_SOURCES = 25;
 const FETCH_INTERVAL_HOURS = 20;
+/** Wydarzenia, które minęły dawniej niż tyle dni, są usuwane z bazy. */
+const DELETE_PAST_AFTER_DAYS = 7;
 
 export type CollectionOptions = {
   /** Pomiń filtr lastFetchedAt (przydatne w dev). */
@@ -195,6 +197,16 @@ export async function executeCollection(
     .where(and(eq(events.status, "active"), lt(events.startsAt, staleCutoff)))
     .returning({ id: events.id });
 
+  // Twarde kasowanie wydarzeń, które minęły ponad DELETE_PAST_AFTER_DAYS temu —
+  // i tak nie pokazujemy przeszłych, więc nie trzymamy ich w bazie.
+  const deleteCutoff = new Date();
+  deleteCutoff.setDate(deleteCutoff.getDate() - DELETE_PAST_AFTER_DAYS);
+
+  const deleted = await db
+    .delete(events)
+    .where(lt(events.startsAt, deleteCutoff))
+    .returning({ id: events.id });
+
   await db.insert(ingestionRuns).values({
     agentType: "collector",
     startedAt,
@@ -205,6 +217,7 @@ export async function executeCollection(
       clubSourcesFetched,
       eventsUpserted,
       eventsMarkedPast: stale.length,
+      eventsDeleted: deleted.length,
       maxSourcesPerRun: maxSources,
       force: !!options.force,
     },
@@ -216,6 +229,7 @@ export async function executeCollection(
     clubSourcesFetched,
     eventsUpserted,
     eventsMarkedPast: stale.length,
+    eventsDeleted: deleted.length,
     maxSources,
   };
 
