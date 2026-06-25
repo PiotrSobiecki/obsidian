@@ -17,6 +17,7 @@ app.use(
   cors({
     origin: [
       "https://obsidian.pages.dev",
+      "https://obsidian-user-application.piotr-sobiecki.workers.dev",
       "http://localhost:3000",
       "http://127.0.0.1:3000",
     ],
