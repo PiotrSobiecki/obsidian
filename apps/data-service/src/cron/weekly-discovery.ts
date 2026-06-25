@@ -10,7 +10,7 @@ import type { WorkerBindings } from "../types";
 // Mało miast na przebieg — przy 50 wynikach/zapytanie i limicie Brave 1/s
 // jeden batch musi domknąć się w limitach Workera. Kolejka rotuje po miastach
 // (lastProcessedAt NULLS FIRST), więc z tygodnia na tydzień pokryje wszystkie.
-export const DISCOVERY_BATCH_SIZE = 3;
+export const DISCOVERY_BATCH_SIZE = 2;
 
 async function verifyCityClubSources(
   db: ReturnType<typeof getDb>,

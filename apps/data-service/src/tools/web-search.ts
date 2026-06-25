@@ -10,7 +10,7 @@ const PAGE_DELAY_MS = 1100; // free tier ~1 req/s
 export async function searchWeb(
   query: string,
   apiKey: string,
-  maxResults = 50
+  maxResults = 10
 ): Promise<BraveResult[]> {
   const results: BraveResult[] = [];
   const seen = new Set<string>();

@@ -168,7 +168,7 @@ export function buildDiscoveryQueries(
 
   const clubs = citySlug ? CLUBS_BY_CITY_SLUG[citySlug] : undefined;
   if (clubs) {
-    for (const club of clubs.slice(0, 6)) {
+    for (const club of clubs.slice(0, 3)) {
       queries.push(`"${club}" koncerty ${cityName}`);
       queries.push(`site:facebook.com/events ${club} ${cityName}`);
     }
