@@ -15,7 +15,7 @@ export const CLUB_SOURCES: SeedSource[] = [
   },
   {
     citySlug: "warszawa",
-    url: "https://goingapp.pl/miejsce/chmury",
+    url: "https://goingapp.pl/miejsce/klubokawiarnia-chmury",
     type: "venue",
     platform: "Chmury",
     trustScore: 0.88,

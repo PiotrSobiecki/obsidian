@@ -242,6 +242,17 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Źródło to kuratorowany listing rock/metal (np. eBilet `/muzyka/rock`,
+ * Biletomat `/wydarzenia/w/{miasto}/muzyka/rock`). Taki feed jest już
+ * przefiltrowany gatunkowo przez serwis, więc ufamy mu i nie wycinamy
+ * koncertów, których tytuł nie zawiera słowa-klucza (np. „New Model Army").
+ */
+export function isRockMetalGenreListingUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  return /\/muzyka\/(rock|metal|hardcore|punk|alternative|industrial|gothic)(\/|$|\?)/i.test(url);
+}
+
 /** Bilet z kategorii rock/metal lub festiwalu na eBilet i podobnych. */
 export function ticketUrlIndicatesRockMetal(url: string | undefined | null): boolean {
   if (!url) return false;
@@ -298,6 +309,12 @@ export function matchesGenrePolicy(
 
   if (EXCLUDE_PATTERNS.some((re) => re.test(text))) {
     return false;
+  }
+
+  // Kuratorowany listing rock/metal (eBilet/Biletomat per gatunek) — feed jest
+  // już przefiltrowany przez serwis, więc ufamy mu poza twardo nie-rockowymi.
+  if (isRockMetalGenreListingUrl(sourceUrl)) {
+    return !/\b(disco|techno|house|trance|edm|hip.?hop|rap|andrzejki|sylwester|disco polo|kabaret|stand.?up|opera|musical|balet)\b/i.test(text);
   }
 
   // Kalendarz znanego klubu rockowego — przepuść (tytuł = nazwa zespołu)

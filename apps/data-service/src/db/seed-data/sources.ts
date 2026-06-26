@@ -18,6 +18,27 @@ const EBILET_CITIES = [
 
 const GOING_CITIES = [...EBILET_CITIES] as const;
 
+// Biletomat ma per-miasto listing gatunkowy /wydarzenia/w/{miasto}/muzyka/rock
+// (sprawdzone: filtruje po mieście; metal zwraca 404, ale "rock" obejmuje też
+// doom/metal/punk). Dochodzą miasta spoza zestawu eBiletu, gdzie biletomat działa.
+const BILETOMAT_CITIES = [
+  ...EBILET_CITIES,
+  "szczecin",
+  "bydgoszcz",
+  "lublin",
+  "bialystok",
+] as const;
+
+function biletomatRockSource(citySlug: string): SeedSource {
+  return {
+    citySlug,
+    url: `https://biletomat.pl/wydarzenia/w/${citySlug}/muzyka/rock`,
+    type: "aggregator",
+    platform: "Biletomat Rock",
+    trustScore: 0.9,
+  };
+}
+
 function ebiletRockMetalSources(citySlug: string): SeedSource[] {
   return [
     {
@@ -51,4 +72,5 @@ function goingSource(citySlug: string): SeedSource {
 export const SEED_SOURCES: SeedSource[] = [
   ...EBILET_CITIES.flatMap((slug) => ebiletRockMetalSources(slug)),
   ...GOING_CITIES.map((slug) => goingSource(slug)),
+  ...BILETOMAT_CITIES.map((slug) => biletomatRockSource(slug)),
 ];
