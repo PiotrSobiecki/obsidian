@@ -23,6 +23,8 @@ export type ParsedEvent = {
   ticket_url?: string;
   price_min?: number;
   price_max?: number;
+  /** Miasto wydarzenia — wypełniane tylko dla ogólnopolskich listingów (Ticketmaster). */
+  city?: string;
 };
 
 export type ClassifiedSource = {
@@ -203,7 +205,7 @@ function normalizeJsonLdEvent(
   return event;
 }
 
-function normalizeCityToken(city: string): string {
+export function normalizeCityToken(city: string): string {
   return city
     .toLowerCase()
     .normalize("NFD")
@@ -423,7 +425,7 @@ export async function classifySearchResult(
   if (isLikelyClubSourceUrl(result.url) || isFestivalSourceUrl(result.url)) {
     return {
       url: result.url,
-      type: result.url.includes("facebook") ? "social" : "venue",
+      type: "venue",
       platform: result.title.slice(0, 100),
       trust_score: isFestivalSourceUrl(result.url) ? 0.9 : 0.85,
       has_event_calendar: true,

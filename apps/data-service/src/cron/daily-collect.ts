@@ -2,9 +2,10 @@ import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { cities, events, ingestionRuns, sources, venues } from "../db/schema";
 import { computeFingerprint } from "../lib/fingerprint";
+import { isNationalListingUrl } from "../lib/genre-policy";
 import { sanitizeTicketUrl } from "../lib/ticket-url";
 import { fetchPage, stripHtml } from "../tools/fetch-page";
-import { parseEventsFromHtml } from "../tools/parse-events";
+import { normalizeCityToken, parseEventsFromHtml } from "../tools/parse-events";
 import type { WorkerBindings } from "../types";
 
 /** Kluby i festiwale mają pierwszeństwo — agregatory rock/metal jako uzupełnienie. */
@@ -74,6 +75,20 @@ export async function executeCollection(
     `[collector] Start: ${activeSources.length} sources (max=${maxSources}, force=${!!options.force})`
   );
 
+  // Mapa miast — potrzebna dla ogólnopolskich listingów (Ticketmaster), gdzie
+  // miasto trzeba wziąć z wydarzenia, a nie z source.cityId.
+  const hasNationalSource = activeSources.some((s) => isNationalListingUrl(s.url));
+  const cityIdByToken = new Map<string, string>();
+  if (hasNationalSource) {
+    const cityRows = await db
+      .select({ id: cities.id, name: cities.name, slug: cities.slug })
+      .from(cities);
+    for (const row of cityRows) {
+      cityIdByToken.set(normalizeCityToken(row.name), row.id);
+      cityIdByToken.set(normalizeCityToken(row.slug), row.id);
+    }
+  }
+
   const now = new Date();
 
   for (const source of activeSources) {
@@ -100,9 +115,21 @@ export async function executeCollection(
 
       console.log(`[collector] ${source.url}: ${parsed.length} events parsed`);
 
+      const isNational = isNationalListingUrl(source.url);
+
       for (const item of parsed) {
         const startsAt = new Date(item.starts_at);
         if (startsAt < now) continue;
+
+        // Ogólnopolski listing — miasto bierzemy z wydarzenia. Jeśli nie da się
+        // go zmapować na obsługiwane miasto, pomijamy (nie zrzucamy do złego).
+        let eventCityId = source.cityId;
+        if (isNational) {
+          const token = item.city ? normalizeCityToken(item.city) : "";
+          const resolved = token ? cityIdByToken.get(token) : undefined;
+          if (!resolved) continue;
+          eventCityId = resolved;
+        }
 
         let venueId: string | null = null;
 
@@ -111,7 +138,7 @@ export async function executeCollection(
             .select()
             .from(venues)
             .where(
-              and(eq(venues.cityId, source.cityId), eq(venues.name, item.venue_name))
+              and(eq(venues.cityId, eventCityId), eq(venues.name, item.venue_name))
             )
             .limit(1);
 
@@ -120,7 +147,7 @@ export async function executeCollection(
           } else {
             const [newVenue] = await db
               .insert(venues)
-              .values({ cityId: source.cityId, name: item.venue_name })
+              .values({ cityId: eventCityId, name: item.venue_name })
               .returning();
             venueId = newVenue.id;
           }
@@ -151,7 +178,7 @@ export async function executeCollection(
             .where(eq(events.id, existing.id));
         } else {
           await db.insert(events).values({
-            cityId: source.cityId,
+            cityId: eventCityId,
             venueId,
             sourceId: source.id,
             title: item.title,

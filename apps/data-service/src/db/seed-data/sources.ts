@@ -68,9 +68,24 @@ function goingSource(citySlug: string): SeedSource {
   };
 }
 
+// Ticketmaster — ogólnopolski listing hard rock / metal (SSR, bez JSON-LD).
+// Jeden URL zwraca koncerty z całej Polski: areny, stadiony, duże plenery
+// (System Of A Down, Judas Priest itd.), których nie ma na listingach klubowych.
+// NIE da się filtrować po mieście (?city= nie działa), więc collector przypisuje
+// miasto per-wydarzenie — patrz isNationalListingUrl. citySlug to tylko kotwica
+// dla source.cityId (większość eventów i tak jest w Warszawie).
+const ticketmasterRockMetalSource: SeedSource = {
+  citySlug: "warszawa",
+  url: "https://www.ticketmaster.pl/muzyka/hard-rock-metal/200/events",
+  type: "aggregator",
+  platform: "Ticketmaster Hard Rock/Metal",
+  trustScore: 0.92,
+};
+
 /** Agregatory biletowe — tylko rock/metal (nie /miasto/ bez filtra gatunku). */
 export const SEED_SOURCES: SeedSource[] = [
   ...EBILET_CITIES.flatMap((slug) => ebiletRockMetalSources(slug)),
   ...GOING_CITIES.map((slug) => goingSource(slug)),
   ...BILETOMAT_CITIES.map((slug) => biletomatRockSource(slug)),
+  ticketmasterRockMetalSource,
 ];

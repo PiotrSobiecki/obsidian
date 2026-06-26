@@ -110,8 +110,6 @@ const CLUB_URL_PATTERNS = [
   /dieselclub/i,
   /graffiti\.lublin/i,
   /alterego\.szczecin/i,
-  /facebook\.com\/.*\/events/i,
-  /fb\.com\/events/i,
 ];
 
 export function isLikelyClubSourceUrl(url: string): boolean {

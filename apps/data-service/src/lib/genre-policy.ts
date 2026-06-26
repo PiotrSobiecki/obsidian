@@ -170,7 +170,6 @@ export function buildDiscoveryQueries(
   if (clubs) {
     for (const club of clubs.slice(0, 3)) {
       queries.push(`"${club}" koncerty ${cityName}`);
-      queries.push(`site:facebook.com/events ${club} ${cityName}`);
     }
   }
 
@@ -200,21 +199,31 @@ export function buildParseEventsPrompt(
 ): string {
   const isFestivalSource =
     sourceUrl != null && /festiwal|festival|mysticfestival|polandrock|metalmania|castleparty|jarocin/i.test(sourceUrl);
+  const isNational = isNationalListingUrl(sourceUrl);
 
   const sourceHint =
-    isFestivalSource
-      ? "Source is a festival page or festival ticket listing — extract every rock/metal festival and festival concert. Include multi-day festivals (use opening day). ALWAYS set ticket_url to the real purchase link (ebilet, eventim, going, ticketmaster, biletomat, or official festival shop)."
-      : sourceType === "venue"
-        ? "Source is a club/venue calendar — expect small gigs, local bands, support slots. Extract every rock/metal/punk listing, not only headliners. Set ticket_url when a buy link is visible."
-        : sourceType === "aggregator"
-          ? "Source is a ticket aggregator — scroll through the full list; include club gigs AND festivals. ALWAYS copy the exact href to the event/ticket page as ticket_url."
-          : "";
+    isNational
+      ? "Source is a NATIONWIDE rock/metal ticket listing covering all of Poland — extract EVERY event regardless of city. ALWAYS copy the exact href to the event/ticket page as ticket_url, and ALWAYS set `city` to the Polish city where the event takes place (e.g. Warszawa, Kraków, Łódź)."
+      : isFestivalSource
+        ? "Source is a festival page or festival ticket listing — extract every rock/metal festival and festival concert. Include multi-day festivals (use opening day). ALWAYS set ticket_url to the real purchase link (ebilet, eventim, going, ticketmaster, biletomat, or official festival shop)."
+        : sourceType === "venue"
+          ? "Source is a club/venue calendar — expect small gigs, local bands, support slots. Extract every rock/metal/punk listing, not only headliners. Set ticket_url when a buy link is visible."
+          : sourceType === "aggregator"
+            ? "Source is a ticket aggregator — scroll through the full list; include club gigs AND festivals. ALWAYS copy the exact href to the event/ticket page as ticket_url."
+            : "";
 
-  return `Extract concert and festival listings from HTML for ${cityName}, Poland.
+  const scope = isNational
+    ? "all of Poland (extract events from every city, not just one)"
+    : `${cityName}, Poland`;
+  const citySchema = isNational
+    ? ", city (Polish city name where the event takes place — REQUIRED)"
+    : "";
+
+  return `Extract concert and festival listings from HTML for ${scope}.
 ${LLM_GENRE_RULES}
 ${sourceHint}
 
-Return ONLY valid JSON array. Each item: title, artists (array), starts_at (ISO 8601), venue_name, ticket_url (REQUIRED when any buy/bilety link exists — full https URL), price_min, price_max.
+Return ONLY valid JSON array. Each item: title, artists (array), starts_at (ISO 8601), venue_name, ticket_url (REQUIRED when any buy/bilety link exists — full https URL), price_min, price_max${citySchema}.
 Only future events (after today). If none match genre policy return [].`;
 }
 
@@ -223,7 +232,6 @@ export function buildClassifySourcePrompt(cityName: string): string {
 ${LLM_GENRE_RULES}
 
 Venue/club calendars (even small clubs with irregular schedules) are HIGH VALUE — type "venue", high trust if they list rock/metal gigs.
-Facebook/Instagram event pages for clubs: type "social", has_event_calendar=true if events are listed.
 
 Return ONLY JSON: { "url", "type": "ticketing|venue|social|aggregator", "platform", "trust_score": 0-1, "has_event_calendar": boolean, "rock_metal_focused": boolean }.
 Reject: news, Wikipedia, generic blogs, disco/ethno/pop-only portals.
@@ -250,7 +258,20 @@ function escapeRegex(s: string): string {
  */
 export function isRockMetalGenreListingUrl(url: string | undefined | null): boolean {
   if (!url) return false;
-  return /\/muzyka\/(rock|metal|hardcore|punk|alternative|industrial|gothic)(\/|$|\?)/i.test(url);
+  return /\/muzyka\/(rock|metal|hardcore|punk|alternative|industrial|gothic|hard-rock-metal)(\/|$|\?)/i.test(url);
+}
+
+/**
+ * Ogólnopolski listing biletowy (np. Ticketmaster `/muzyka/hard-rock-metal`),
+ * który NIE filtruje po mieście — jeden URL zwraca koncerty z całej Polski.
+ * Collector musi wtedy przypisać miasto per-wydarzenie (z pola `city`),
+ * a nie z `source.cityId`.
+ */
+const NATIONAL_LISTING_PATTERNS = [/ticketmaster\.pl\/muzyka\//i];
+
+export function isNationalListingUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  return NATIONAL_LISTING_PATTERNS.some((re) => re.test(url));
 }
 
 /** Bilet z kategorii rock/metal lub festiwalu na eBilet i podobnych. */
