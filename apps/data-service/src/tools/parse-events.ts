@@ -11,6 +11,7 @@ import {
   buildClassifySourcePrompt,
   buildParseEventsPrompt,
   matchesGenrePolicy,
+  type GenreMatchContext,
 } from "../lib/genre-policy";
 import { extractVenueEventsFromHtml } from "./extract-venue-events";
 
@@ -45,10 +46,18 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Biletomat (i część innych) oznacza koncerty jako TheaterEvent — też łapiemy.
+const EVENT_JSONLD_TYPES = new Set([
+  "Event",
+  "MusicEvent",
+  "Festival",
+  "TheaterEvent",
+]);
+
 function isEventJsonLdType(type: unknown): boolean {
-  if (type === "Event" || type === "MusicEvent" || type === "Festival") return true;
+  if (typeof type === "string") return EVENT_JSONLD_TYPES.has(type);
   if (Array.isArray(type)) {
-    return type.some((t) => t === "Event" || t === "MusicEvent" || t === "Festival");
+    return type.some((t) => typeof t === "string" && EVENT_JSONLD_TYPES.has(t));
   }
   return false;
 }
@@ -123,7 +132,10 @@ function mergeUniqueEvents(
   return merged;
 }
 
-function normalizeJsonLdEvent(raw: Record<string, unknown>): ParsedEvent | null {
+function normalizeJsonLdEvent(
+  raw: Record<string, unknown>,
+  genreCtx?: GenreMatchContext
+): ParsedEvent | null {
   const title =
     typeof raw.name === "string"
       ? raw.name
@@ -182,7 +194,8 @@ function normalizeJsonLdEvent(raw: Record<string, unknown>): ParsedEvent | null 
   };
 
   if (!matchesGenrePolicy(event.title, event.artists, ticketUrl, {
-    venueName: venueName,
+    ...genreCtx,
+    venueName: venueName || genreCtx?.venueName,
   })) {
     return null;
   }
@@ -203,16 +216,19 @@ function eventJsonMatchesCity(raw: Record<string, unknown>, cityName: string): b
   if (typeof location !== "object" || location === null) return true;
 
   const loc = location as Record<string, unknown>;
-  const parts: string[] = [];
-  if (typeof loc.name === "string") parts.push(loc.name);
+  const localityParts: string[] = [];
   const addr = loc.address;
   if (typeof addr === "object" && addr !== null) {
     const a = addr as Record<string, unknown>;
-    if (typeof a.addressLocality === "string") parts.push(a.addressLocality);
-    if (typeof a.addressRegion === "string") parts.push(a.addressRegion);
+    if (typeof a.addressLocality === "string") localityParts.push(a.addressLocality);
+    if (typeof a.addressRegion === "string") localityParts.push(a.addressRegion);
   }
 
-  const hay = normalizeCityToken(parts.join(" "));
+  // Brak rozpoznawalnego miasta w JSON-LD (np. Biletomat podaje tylko nazwę sali
+  // i ulicę) — nie odrzucaj; źródło jest już per-miasto, ufamy jego cityId.
+  if (localityParts.length === 0) return true;
+
+  const hay = normalizeCityToken(localityParts.join(" "));
   return hay.includes(token) || token.includes(hay.split(",")[0]?.trim() ?? "");
 }
 
@@ -251,7 +267,11 @@ function collectJsonLdEventNodes(node: unknown, out: Record<string, unknown>[]) 
   }
 }
 
-export function extractJsonLdEvents(html: string, cityName?: string): ParsedEvent[] {
+export function extractJsonLdEvents(
+  html: string,
+  cityName?: string,
+  genreCtx?: GenreMatchContext
+): ParsedEvent[] {
   const events: ParsedEvent[] = [];
   const seen = new Set<string>();
   const scriptRe =
@@ -268,7 +288,7 @@ export function extractJsonLdEvents(html: string, cityName?: string): ParsedEven
 
       for (const obj of rawEvents) {
         if (cityName && !eventJsonMatchesCity(obj, cityName)) continue;
-        const parsed = normalizeJsonLdEvent(obj);
+        const parsed = normalizeJsonLdEvent(obj, genreCtx);
         if (!parsed) continue;
         const key = `${parsed.title}|${parsed.starts_at}|${parsed.venue_name}`.toLowerCase();
         if (seen.has(key)) continue;
@@ -300,7 +320,7 @@ export async function parseEventsFromHtml(
   const defaultVenue = ctx.venueName ?? "";
 
   const jsonLd = rawHtml
-    ? extractJsonLdEvents(rawHtml, ctx.cityName)
+    ? extractJsonLdEvents(rawHtml, ctx.cityName, genreCtx)
         .map((e) => ({
           ...e,
           venue_name: e.venue_name || defaultVenue,
