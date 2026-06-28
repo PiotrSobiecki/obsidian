@@ -14,7 +14,14 @@ import {
   venuesLikelySame,
   type CityGeoRow,
 } from "../lib/event-quality";
-import { isFestivalEvent, isFestivalSourceUrl } from "../lib/festival-scene";
+import {
+  festivalsLikelySameEvent,
+  isFestivalEvent,
+  isFestivalSourceUrl,
+  isSuspiciousOffFestivalListing,
+  preferFestivalTicketUrl,
+  sameCalendarDay,
+} from "../lib/festival-scene";
 import { isNationalListingUrl } from "../lib/genre-policy";
 import { resolveCityIdForKnownVenue } from "../lib/club-scene";
 import { sanitizeTicketUrl } from "../lib/ticket-url";
@@ -153,6 +160,7 @@ export async function collectSource(
 
   for (const item of parsed) {
     if (isJunkEvent({ title: item.title, ticketUrl: item.ticket_url })) continue;
+    if (isSuspiciousOffFestivalListing(item.title, item.artists ?? [])) continue;
 
     const startsAt = new Date(item.starts_at);
     if (startsAt < now) continue;
@@ -215,14 +223,20 @@ export async function collectSource(
       .where(eq(events.fingerprint, fingerprint))
       .limit(1);
 
-    if (!existing && !isFestivalEvent(item.title, venueLabel ?? "")) {
-      const windowStart = new Date(startsAt.getTime() - 3 * 60 * 60 * 1000);
-      const windowEnd = new Date(startsAt.getTime() + 3 * 60 * 60 * 1000);
+    if (!existing) {
+      const isFest = isFestivalEvent(item.title, venueLabel ?? "");
+      const windowStart = isFest
+        ? new Date(startsAt.getFullYear(), startsAt.getMonth(), startsAt.getDate())
+        : new Date(startsAt.getTime() - 3 * 60 * 60 * 1000);
+      const windowEnd = isFest
+        ? new Date(windowStart.getTime() + 24 * 60 * 60 * 1000)
+        : new Date(startsAt.getTime() + 3 * 60 * 60 * 1000);
       const candidates = await db
         .select({
           id: events.id,
           title: events.title,
           ticketUrl: events.ticketUrl,
+          startsAt: events.startsAt,
           venueName: venues.name,
         })
         .from(events)
@@ -236,12 +250,15 @@ export async function collectSource(
           )
         );
 
-      const duplicate = candidates.find(
-        (c) =>
-          !isFestivalEvent(c.title, c.venueName ?? "") &&
+      const duplicate = candidates.find((c) => {
+        if (isFest) {
+          return festivalsLikelySameEvent(c.title, item.title);
+        }
+        return (
           titlesLikelySameEvent(c.title, item.title) &&
           venuesLikelySame(c.venueName, venueLabel)
-      );
+        );
+      });
       if (duplicate) {
         existing = duplicate;
       }
@@ -251,6 +268,9 @@ export async function collectSource(
     const mergedTitle = existing
       ? preferEventTitle(existing.title, item.title)
       : item.title;
+    const mergedTicketUrl = existing
+      ? preferFestivalTicketUrl(existing.ticketUrl, ticketUrl) ?? ticketUrl
+      : ticketUrl;
 
     if (existing) {
       await db
@@ -259,7 +279,7 @@ export async function collectSource(
           cityId: eventCityId,
           title: mergedTitle,
           artistsJson: item.artists ?? [],
-          ticketUrl: ticketUrl ?? existing.ticketUrl ?? undefined,
+          ticketUrl: mergedTicketUrl ?? existing.ticketUrl ?? undefined,
           priceMin: item.price_min,
           priceMax: item.price_max,
           status: "active",
@@ -337,6 +357,10 @@ export async function runCollectionCleanup(
         ilike(events.title, "%| Koncerty w Polsce%"),
         ilike(events.title, "% koncerty 2026 |%"),
         ilike(events.title, "% - koncerty - %"),
+        ilike(events.title, "%bilety na eBilet%"),
+        ilike(events.title, "%eBilet NOW%"),
+        ilike(events.title, "%powiększa line-up%"),
+        ilike(events.title, "%powieksza line-up%"),
         ilike(events.ticketUrl, "%rockmetal.pl%"),
         ilike(events.ticketUrl, "%stage24.pl%")
       )
@@ -344,12 +368,24 @@ export async function runCollectionCleanup(
     .returning({ id: events.id });
 
   const activeForJunkCheck = await db
-    .select({ id: events.id, title: events.title, ticketUrl: events.ticketUrl })
+    .select({
+      id: events.id,
+      title: events.title,
+      ticketUrl: events.ticketUrl,
+      artists: events.artistsJson,
+    })
     .from(events)
     .where(eq(events.status, "active"));
 
   const junkTitleIds = activeForJunkCheck
-    .filter((row) => isJunkEvent(row))
+    .filter(
+      (row) =>
+        isJunkEvent(row) ||
+        isSuspiciousOffFestivalListing(
+          row.title,
+          Array.isArray(row.artists) ? (row.artists as string[]) : []
+        )
+    )
     .map((row) => row.id);
 
   const junkByTitle =
@@ -459,28 +495,42 @@ export async function runCollectionCleanup(
       for (let j = i + 1; j < group.length; j++) {
         const b = group[j];
         if (duplicateIds.has(b.id)) continue;
+
+        const aFest = isFestivalEvent(a.title, a.venueName ?? "");
+        const bFest = isFestivalEvent(b.title, b.venueName ?? "");
+
+        let isDuplicate = false;
         if (
-          isFestivalEvent(a.title, a.venueName ?? "") ||
-          isFestivalEvent(b.title, b.venueName ?? "")
+          aFest &&
+          bFest &&
+          festivalsLikelySameEvent(a.title, b.title) &&
+          sameCalendarDay(a.startsAt, b.startsAt)
         ) {
-          continue;
+          isDuplicate = true;
+        } else if (!aFest && !bFest) {
+          const diffMs = Math.abs(a.startsAt.getTime() - b.startsAt.getTime());
+          if (
+            diffMs <= 3 * 60 * 60 * 1000 &&
+            titlesLikelySameEvent(a.title, b.title) &&
+            venuesLikelySame(a.venueName, b.venueName)
+          ) {
+            isDuplicate = true;
+          }
         }
-        const diffMs = Math.abs(a.startsAt.getTime() - b.startsAt.getTime());
-        if (diffMs > 3 * 60 * 60 * 1000) continue;
-        if (
-          !titlesLikelySameEvent(a.title, b.title) ||
-          !venuesLikelySame(a.venueName, b.venueName)
-        ) {
-          continue;
-        }
+        if (!isDuplicate) continue;
+
         const dropId =
-          a.ticketUrl && !b.ticketUrl
-            ? b.id
-            : b.ticketUrl && !a.ticketUrl
-              ? a.id
-              : preferEventTitle(a.title, b.title) === a.title
-                ? b.id
-                : a.id;
+          aFest && bFest
+            ? (preferFestivalTicketUrl(a.ticketUrl, b.ticketUrl) ?? a.ticketUrl) === a.ticketUrl
+              ? b.id
+              : a.id
+            : a.ticketUrl && !b.ticketUrl
+              ? b.id
+              : b.ticketUrl && !a.ticketUrl
+                ? a.id
+                : preferEventTitle(a.title, b.title) === a.title
+                  ? b.id
+                  : a.id;
         duplicateIds.add(dropId);
         if (dropId === a.id) break;
       }

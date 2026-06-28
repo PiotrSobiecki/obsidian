@@ -99,6 +99,7 @@ const CLUB_URL_PATTERNS = [
   /jarocin/i,
   /innebrzmienia/i,
   /off-festival/i,
+  /hellsbells/i,
   /hydrozagadka/i,
   /pogoclub/i,
   /alchemia\.com/i,

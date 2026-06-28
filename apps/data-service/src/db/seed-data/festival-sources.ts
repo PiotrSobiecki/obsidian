@@ -47,10 +47,31 @@ export const FESTIVAL_SOURCES: SeedSource[] = [
     trustScore: 0.9,
   },
   {
+    citySlug: "lublin",
+    url: "https://innebrzmienia.eu/festiwal/line-up/",
+    type: "venue",
+    platform: "Inne Brzmienia",
+    trustScore: 0.9,
+  },
+  {
     citySlug: "katowice",
     url: "https://off-festival.pl/",
     type: "venue",
     platform: "OFF Festival",
+    trustScore: 0.92,
+  },
+  {
+    citySlug: "szczecin",
+    url: "https://hellsbells.pl/",
+    type: "venue",
+    platform: "Hells Bells Festival",
+    trustScore: 0.92,
+  },
+  {
+    citySlug: "szczecin",
+    url: "https://hellsbells.pl/artysci/",
+    type: "venue",
+    platform: "Hells Bells Festival",
     trustScore: 0.92,
   },
   {

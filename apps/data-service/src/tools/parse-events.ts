@@ -1,7 +1,7 @@
 import type { Ai } from "@cloudflare/workers-types";
 import { WORKERS_AI_MODEL } from "../lib/ai-model";
 import { isLikelyClubSourceUrl } from "../lib/club-scene";
-import { isFestivalSourceUrl } from "../lib/festival-scene";
+import { isFestivalSourceUrl, isSuspiciousOffFestivalListing } from "../lib/festival-scene";
 import {
   looksLikeTicketUrl,
   resolveTicketUrl,
@@ -16,7 +16,7 @@ import {
 } from "../lib/genre-policy";
 import { isDiscouragedSourceUrl, isJunkTitle } from "../lib/event-quality";
 import { extractVenueEventsFromHtml } from "./extract-venue-events";
-import { extractFestivalHomepageEvent, extractFestivalLineupEvents } from "./extract-festival-events";
+import { extractFestivalHomepageEvent, extractFestivalDayScheduleEvents, extractFestivalLineupEvents } from "./extract-festival-events";
 import { extractTicketmasterEvents } from "./extract-ticketmaster-events";
 
 export { isJunkTitle };
@@ -344,6 +344,8 @@ export async function parseEventsFromHtml(
           ticket_url: sanitizeTicketUrl(e.ticket_url, ctx.sourceUrl) ?? e.ticket_url,
         }))
         .filter((e) =>
+          !isJunkTitle(e.title) &&
+          !isSuspiciousOffFestivalListing(e.title, e.artists ?? []) &&
           matchesGenrePolicy(e.title, e.artists, e.ticket_url, {
             ...genreCtx,
             venueName: e.venue_name,
@@ -379,7 +381,10 @@ export async function parseEventsFromHtml(
 
   const festivalLineup =
     rawHtml && isFestival && defaultVenue
-      ? extractFestivalLineupEvents(rawHtml, defaultVenue, ctx.sourceUrl!, genreCtx)
+      ? [
+          ...extractFestivalLineupEvents(rawHtml, defaultVenue, ctx.sourceUrl!, genreCtx),
+          ...extractFestivalDayScheduleEvents(rawHtml, defaultVenue, ctx.sourceUrl!, genreCtx),
+        ]
       : [];
 
   // Ogólnopolski listing (Ticketmaster)
@@ -445,10 +450,11 @@ export async function parseEventsFromHtml(
       if (!jsonMatch) continue;
 
       const chunkEvents = (JSON.parse(jsonMatch[0]) as ParsedEvent[]).filter(
-        (e) =>
-          e.title &&
-          !isJunkTitle(e.title) &&
-          e.starts_at &&
+          (e) =>
+            e.title &&
+            !isJunkTitle(e.title) &&
+            !isSuspiciousOffFestivalListing(e.title, e.artists ?? []) &&
+            e.starts_at &&
           !Number.isNaN(Date.parse(e.starts_at)) &&
           matchesGenrePolicy(e.title, e.artists ?? [], e.ticket_url, {
             sourceType: ctx.sourceType,

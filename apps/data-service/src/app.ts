@@ -13,6 +13,7 @@ import { inArray } from "drizzle-orm";
 import { resolveEventDateRange } from "./lib/date-range";
 import { ALL_POLAND_CITY, isAllPolandSlug } from "./lib/all-poland";
 import { isJunkEvent } from "./lib/event-quality";
+import { isSuspiciousOffFestivalListing } from "./lib/festival-scene";
 import { hasEventSource } from "./lib/real-events";
 import { sanitizeTicketUrl, ticketProviderLabel } from "./lib/ticket-url";
 import type { WorkerBindings } from "./types";
@@ -152,7 +153,14 @@ app.get("/events", async (c) => {
       from: effectiveFrom.toISOString(),
       to: dateTo.toISOString(),
       events: rows
-        .filter((row) => !isJunkEvent({ title: row.title, ticketUrl: row.ticketUrl }))
+        .filter(
+          (row) =>
+            !isJunkEvent({ title: row.title, ticketUrl: row.ticketUrl }) &&
+            !isSuspiciousOffFestivalListing(
+              row.title,
+              Array.isArray(row.artists) ? (row.artists as string[]) : []
+            )
+        )
         .map((row) => {
         const ticketUrl = sanitizeTicketUrl(row.ticketUrl);
         return {

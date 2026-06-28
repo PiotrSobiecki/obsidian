@@ -74,6 +74,13 @@ export function isJunkTitle(title: string): boolean {
   if (/\|\s*koncerty\s*w\s*polsce/i.test(t)) return true;
   if (/koncerty\s*\d{4}\s*\|/i.test(t)) return true;
   if (/^kup bilet\b/i.test(t)) return true;
+  // agregatory — tytuły stron biletowych, nie wydarzeń
+  if (/bilety\s+na\s+ebilet/i.test(t)) return true;
+  if (/\|\s*katowice\s*\|\s*bilety/i.test(t)) return true;
+  if (/ebilet\s+now\b/i.test(t)) return true;
+  if (/powi[eę]ksza\s+line-?up/i.test(t)) return true;
+  if (/sprawd[zź],\s*kto\s+wyst[aą]pi/i.test(t)) return true;
+  if (/\|\s*ebilet/i.test(t) && /festiwal|festival/i.test(t)) return true;
   return false;
 }
 

@@ -70,6 +70,18 @@ function findJsonLdStartDate(html: string): string | null {
 
 /** Szuka daty otwarcia festiwalu w widocznym tekście strony. */
 function findFestivalDateInText(html: string): string | null {
+  // JSON-LD / meta (caption: „Inne Brzmienia 2-5 lipca 2026 Lublin”)
+  const caption = html.match(
+    /"caption":"[^"]*?(\d{1,2})-(\d{1,2})\s+([a-ząćęłńóśźż]+)\s+(\d{4})/i
+  );
+  if (caption) {
+    const month = MONTHS_PL[normalizeMonthToken(caption[3])];
+    if (month) {
+      const iso = toIsoDateTime(Number(caption[4]), month, Number(caption[1]));
+      if (iso && new Date(iso) >= new Date()) return iso;
+    }
+  }
+
   const text = html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -105,12 +117,56 @@ function findFestivalDateInText(html: string): string | null {
   return null;
 }
 
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&ndash;|&#8211;/g, "–")
+    .replace(/&mdash;|&#8212;/g, "—");
+}
+
 function cleanArtistTitle(raw: string): string {
-  return raw
+  return decodeHtmlEntities(raw)
     .replace(/^#+\s*/, "")
     .replace(/\s*\|.*$/, "")
+    .replace(/[^\p{L}\p{N}\s'’.?&!+-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function pushLineupEvent(
+  events: ParsedEvent[],
+  seen: Set<string>,
+  now: Date,
+  title: string,
+  startsAt: string | null,
+  festivalName: string,
+  baseUrl: string,
+  genreCtx?: GenreMatchContext
+): void {
+  if (!startsAt || new Date(startsAt) < now) return;
+  if (title.length < 3 || isJunkTitle(title)) return;
+  if (
+    genreCtx &&
+    !matchesGenrePolicy(title, [], baseUrl, {
+      ...genreCtx,
+      venueName: festivalName,
+    })
+  ) {
+    return;
+  }
+  const key = `${title}|${startsAt}`.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  events.push({
+    title,
+    artists: [title],
+    starts_at: startsAt,
+    venue_name: festivalName,
+    ticket_url: baseUrl,
+  });
 }
 
 /**
@@ -129,19 +185,11 @@ export function extractFestivalLineupEvents(
   const seen = new Set<string>();
   const now = new Date();
 
-  const plain = html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/h[1-6]>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ");
-
-  const lineupRe =
-    /(?:^|[\n#])([^#\n|]{3,120}?)(?:\s*\|[^#\n]*)?\s+(\d{2})\/(\d{2})\/(\d{4})\s*\|\s*(\d{2}):(\d{2})/gi;
-
-  for (const match of plain.matchAll(lineupRe)) {
+  // WordPress Avada: <h4>Artysta</h4> … DD/MM/YYYY | HH:MM
+  const h4BlockRe =
+    /<h4[^>]*>([^<]{3,120})<\/h4>[\s\S]{0,1200}?(\d{2})\/(\d{2})\/(\d{4})\s*\|\s*(\d{2}):(\d{2})/gi;
+  for (const match of html.matchAll(h4BlockRe)) {
     const title = cleanArtistTitle(match[1]);
-    if (title.length < 3 || isJunkTitle(title)) continue;
-
     const startsAt = parseSlashDateTime(
       match[2],
       match[3],
@@ -149,29 +197,69 @@ export function extractFestivalLineupEvents(
       match[5],
       match[6]
     );
+    pushLineupEvent(events, seen, now, title, startsAt, festivalName, baseUrl, genreCtx);
+  }
+
+  // Ten sam wzorzec w oczyszczonym tekście (bez wymogu początku linii)
+  const plain = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ");
+
+  const inlineRe =
+    /([A-Za-zÀ-ž][A-Za-zÀ-ž0-9'’.?&\s-]{2,90}?)\s+(\d{2})\/(\d{2})\/(\d{4})\s*\|\s*(\d{2}):(\d{2})/g;
+  for (const match of plain.matchAll(inlineRe)) {
+    const title = cleanArtistTitle(match[1]);
+    const startsAt = parseSlashDateTime(
+      match[2],
+      match[3],
+      match[4],
+      match[5],
+      match[6]
+    );
+    pushLineupEvent(events, seen, now, title, startsAt, festivalName, baseUrl, genreCtx);
+  }
+
+  return events;
+}
+
+/**
+ * Harmonogram dzienny: „PIĄTEK 26.06.2026: Vader, Furia, …” (hellsbells.pl/artysci).
+ */
+export function extractFestivalDayScheduleEvents(
+  html: string,
+  festivalName: string,
+  baseUrl: string,
+  genreCtx?: GenreMatchContext
+): ParsedEvent[] {
+  if (!isFestivalSourceUrl(baseUrl)) return [];
+
+  const events: ParsedEvent[] = [];
+  const seen = new Set<string>();
+  const now = new Date();
+
+  const dayRe =
+    /(?:PIĄTEK|SOBOTA|PONIEDZIAŁEK|WTOREK|ŚRODA|CZWARTEK|NIEDZIELA)\s+(\d{2})\.(\d{2})\.(\d{4})\s*:\s*([^<]+)/gi;
+
+  for (const match of html.matchAll(dayRe)) {
+    const startsAt = toIsoDateTime(
+      Number(match[3]),
+      Number(match[2]),
+      Number(match[1]),
+      18,
+      0
+    );
     if (!startsAt || new Date(startsAt) < now) continue;
 
-    if (
-      genreCtx &&
-      !matchesGenrePolicy(title, [], baseUrl, {
-        ...genreCtx,
-        venueName: festivalName,
-      })
-    ) {
-      continue;
+    const artists = match[4]
+      .split(",")
+      .map((a) => cleanArtistTitle(a.replace(/\([^)]*\)/g, "").trim()))
+      .filter((a) => a.length >= 2);
+
+    for (const artist of artists) {
+      pushLineupEvent(events, seen, now, artist, startsAt, festivalName, baseUrl, genreCtx);
     }
-
-    const key = `${title}|${startsAt}`.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    events.push({
-      title,
-      artists: [title],
-      starts_at: startsAt,
-      venue_name: festivalName,
-      ticket_url: baseUrl,
-    });
   }
 
   return events;
@@ -191,7 +279,14 @@ export function extractFestivalHomepageEvent(
   const startsAt = findJsonLdStartDate(html) ?? findFestivalDateInText(html);
   if (!startsAt) return null;
 
-  const title = festivalName.trim();
+  let title = festivalName.trim();
+  const pageTitle = html.match(/<title>([^<]+)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim();
+  if (
+    pageTitle &&
+    /inne\s*brzmienia|off\s*festival|wschód\s*kultury|wschod\s*kultury/i.test(pageTitle)
+  ) {
+    title = pageTitle;
+  }
   if (isJunkTitle(title)) return null;
 
   return {
