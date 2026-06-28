@@ -14,15 +14,21 @@ export function Footer() {
             </h3>
             <div className="mt-1 flex items-center text-sm text-muted-foreground">
               <Mail className="mr-1 h-4 w-4" />
-              <span>kontakt@obsidian.pl</span>
+              <span>obsidian@sobiecki.org</span>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <Link href="/koncerty" className="transition-colors hover:text-primary">
+            <Link
+              href="/koncerty"
+              className="transition-colors hover:text-primary"
+            >
               Koncerty
             </Link>
-            <Link href="#jak-to-dziala" className="transition-colors hover:text-primary">
+            <Link
+              href="#jak-to-dziala"
+              className="transition-colors hover:text-primary"
+            >
               Jak to działa
             </Link>
             <Link href="#faq" className="transition-colors hover:text-primary">

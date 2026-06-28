@@ -19,15 +19,21 @@ import type { WorkerBindings } from "./types";
 
 const app = new Hono<{ Bindings: WorkerBindings }>();
 
+const ALLOWED_ORIGINS = [
+  "https://obsidian.pages.dev",
+  "https://obsidian-user-application.piotr-sobiecki.workers.dev",
+  "https://obsidian-events.org",
+  "https://www.obsidian-events.org",
+  "http://obsidian-events.org",
+  "http://www.obsidian-events.org",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
+
 app.use(
   "/*",
   cors({
-    origin: [
-      "https://obsidian.pages.dev",
-      "https://obsidian-user-application.piotr-sobiecki.workers.dev",
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-    ],
+    origin: (origin) => (origin && ALLOWED_ORIGINS.includes(origin) ? origin : null),
     allowMethods: ["GET", "POST", "OPTIONS"],
   })
 );
