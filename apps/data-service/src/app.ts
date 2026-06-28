@@ -12,6 +12,7 @@ import { enqueueDiscovery, executeDiscovery } from "./cron/weekly-discovery";
 import { inArray } from "drizzle-orm";
 import { resolveEventDateRange } from "./lib/date-range";
 import { ALL_POLAND_CITY, isAllPolandSlug } from "./lib/all-poland";
+import { isJunkEvent } from "./lib/event-quality";
 import { hasEventSource } from "./lib/real-events";
 import { sanitizeTicketUrl, ticketProviderLabel } from "./lib/ticket-url";
 import type { WorkerBindings } from "./types";
@@ -144,7 +145,9 @@ app.get("/events", async (c) => {
       city: cityMeta,
       from: effectiveFrom.toISOString(),
       to: dateTo.toISOString(),
-      events: rows.map((row) => {
+      events: rows
+        .filter((row) => !isJunkEvent({ title: row.title, ticketUrl: row.ticketUrl }))
+        .map((row) => {
         const ticketUrl = sanitizeTicketUrl(row.ticketUrl);
         return {
           ...row,
@@ -332,6 +335,21 @@ app.post("/admin/discover/enqueue", async (c) => {
   } catch (error) {
     console.error("POST /admin/discover/enqueue error:", error);
     return c.json({ error: "Enqueue failed" }, 500);
+  }
+});
+
+// Tylko sprzątanie bazy (śmieci, duplikaty, złe źródła) — bez kolejki collect.
+app.post("/admin/cleanup", async (c) => {
+  if (!requireAdmin(c)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const cleanup = await runCollectionCleanup(c.env);
+    return c.json({ ok: true, ...cleanup });
+  } catch (error) {
+    console.error("POST /admin/cleanup error:", error);
+    return c.json({ error: "Cleanup failed" }, 500);
   }
 });
 

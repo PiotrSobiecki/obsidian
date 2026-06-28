@@ -90,3 +90,4 @@ pnpm deploy:user-application
 | `GET /events?city=warszawa&from=2026-06-24&range=3days` | Koncerty |
 | `GET /admin/sources` | Źródła (`x-api-key`) |
 | `GET /admin/ingestion-runs` | Logi agentów |
+| `POST /admin/cleanup` | Kasuje śmieci z bazy (`x-api-key`) |
