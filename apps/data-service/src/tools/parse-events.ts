@@ -30,8 +30,6 @@ export type ParsedEvent = {
   price_max?: number;
   /** Miasto wydarzenia — wypełniane tylko dla ogólnopolskich listingów (Ticketmaster). */
   city?: string;
-  geo_lat?: number;
-  geo_lng?: number;
 };
 
 export type ClassifiedSource = {
@@ -166,31 +164,10 @@ function normalizeJsonLdEvent(
   }
 
   let venueName = "";
-  let eventCity: string | undefined;
-  let geo_lat: number | undefined;
-  let geo_lng: number | undefined;
-
   const location = raw.location;
   if (typeof location === "object" && location !== null) {
     const loc = location as Record<string, unknown>;
     if (typeof loc.name === "string") venueName = loc.name;
-
-    const addr = loc.address;
-    if (typeof addr === "object" && addr !== null) {
-      const a = addr as Record<string, unknown>;
-      if (typeof a.addressLocality === "string") eventCity = a.addressLocality;
-    }
-
-    const geo = loc.geo;
-    if (typeof geo === "object" && geo !== null) {
-      const g = geo as Record<string, unknown>;
-      const lat = typeof g.latitude === "number" ? g.latitude : Number(g.latitude);
-      const lng = typeof g.longitude === "number" ? g.longitude : Number(g.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        geo_lat = lat;
-        geo_lng = lng;
-      }
-    }
   }
 
   const performers = raw.performer;
@@ -223,9 +200,6 @@ function normalizeJsonLdEvent(
     starts_at: startsAt,
     venue_name: venueName,
     ticket_url: ticketUrl ? sanitizeTicketUrl(ticketUrl) ?? undefined : undefined,
-    city: eventCity,
-    geo_lat,
-    geo_lng,
   };
 
   if (isJunkTitle(title)) return null;

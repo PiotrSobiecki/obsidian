@@ -3,9 +3,9 @@ import { getDb } from "../db/client";
 import { cities, events, ingestionRuns, sources, venues } from "../db/schema";
 import { computeFingerprint } from "../lib/fingerprint";
 import {
-  assignEventCityId,
   isDiscouragedSourceUrl,
   isJunkEvent,
+  isJunkTitle,
   normalizeVenueName,
   preferEventTitle,
   resolveEventCityId,
@@ -16,7 +16,6 @@ import {
 } from "../lib/event-quality";
 import { isNationalListingUrl } from "../lib/genre-policy";
 import { sanitizeTicketUrl } from "../lib/ticket-url";
-import { lookupVenueCityId } from "../lib/venue-city";
 import { fetchPage, stripHtml } from "../tools/fetch-page";
 import { normalizeCityToken, parseEventsFromHtml } from "../tools/parse-events";
 import type { CollectSourceMessage, WorkerBindings } from "../types";
@@ -108,23 +107,29 @@ export async function collectSource(
       : 48000;
   const snippet = stripHtml(html, stripLimit);
 
-  // Mapa miast — zawsze (przypisanie miasta z treści / najbliższe miasto z bazy).
-  let cityIdByToken = new Map<string, string>();
-  const cityRows = await db
-    .select({
-      id: cities.id,
-      name: cities.name,
-      slug: cities.slug,
-      lat: cities.lat,
-      lng: cities.lng,
-    })
-    .from(cities);
-  const allCities: CityGeoRow[] = cityRows;
-  for (const row of cityRows) {
-    cityIdByToken.set(normalizeCityToken(row.name), row.id);
-    cityIdByToken.set(normalizeCityToken(row.slug), row.id);
+  // Mapa miast — ogólnopolskie listingi (TM) oraz odkryte agregatory bez URL per-miasto.
+  let cityIdByToken: Map<string, string> | undefined;
+  let cityNames: string[] | undefined;
+  let allCities: CityGeoRow[] | undefined;
+  const needsCityMap = isNational || !trustsSourceCityId(source.url, source.type);
+  if (needsCityMap) {
+    cityIdByToken = new Map<string, string>();
+    const cityRows = await db
+      .select({
+        id: cities.id,
+        name: cities.name,
+        slug: cities.slug,
+        lat: cities.lat,
+        lng: cities.lng,
+      })
+      .from(cities);
+    allCities = cityRows;
+    for (const row of cityRows) {
+      cityIdByToken.set(normalizeCityToken(row.name), row.id);
+      cityIdByToken.set(normalizeCityToken(row.slug), row.id);
+    }
+    cityNames = cityRows.map((r) => r.name);
   }
-  const cityNames = cityRows.map((r) => r.name);
 
   const parsed = await parseEventsFromHtml(
     env.AI,
@@ -147,21 +152,22 @@ export async function collectSource(
     const startsAt = new Date(item.starts_at);
     if (startsAt < now) continue;
 
-    const trustsSource = trustsSourceCityId(source.url, source.type);
-    const eventCityId = assignEventCityId(
-      {
-        title: item.title,
-        venue_name: item.venue_name,
-        city: item.city,
-        geo_lat: item.geo_lat,
-        geo_lng: item.geo_lng,
-      },
-      allCities,
-      cityIdByToken,
-      source.cityId,
-      { isNational, trustsSource }
-    );
-    if (!eventCityId) continue;
+    let eventCityId = source.cityId;
+    if (isNational && cityIdByToken && allCities) {
+      const text = `${item.title} ${item.venue_name ?? ""}`;
+      const token = item.city ? normalizeCityToken(item.city) : "";
+      let resolved = token ? cityIdByToken.get(token) : undefined;
+      if (!resolved) {
+        resolved = resolveEventCityId(text, allCities, { explicitCity: item.city });
+      }
+      if (!resolved) continue;
+      eventCityId = resolved;
+    } else if (!trustsSourceCityId(source.url, source.type) && allCities) {
+      const text = `${item.title} ${item.venue_name ?? ""} ${item.city ?? ""}`;
+      const resolved = resolveEventCityId(text, allCities, { explicitCity: item.city });
+      if (!resolved) continue;
+      eventCityId = resolved;
+    }
 
     const venueLabel = item.venue_name ? normalizeVenueName(item.venue_name) : null;
     let venueId: string | null = null;
@@ -385,10 +391,7 @@ export async function runCollectionCleanup(
 
   let cityReassigned = 0;
   for (const row of activeFuture) {
-    const fromVenue = lookupVenueCityId(row.venueName ?? undefined, cityRows);
-    const detected =
-      fromVenue ??
-      resolveEventCityId(`${row.title} ${row.venueName ?? ""}`, cityRows);
+    const detected = resolveEventCityId(`${row.title} ${row.venueName ?? ""}`, cityRows);
     if (detected && detected !== row.cityId) {
       await db
         .update(events)

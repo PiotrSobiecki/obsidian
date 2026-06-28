@@ -4,11 +4,11 @@ Wyszukiwarka koncertów: wybierz miasto i datę, sprawdź co gra dziś i w najbl
 
 ## Stack
 
-| Warstwa | Technologia | Folder |
-|---------|-------------|--------|
+| Warstwa  | Technologia                   | Folder                  |
+| -------- | ----------------------------- | ----------------------- |
 | Frontend | Next.js 16 → Cloudflare Pages | `apps/user-application` |
-| API | Hono → Cloudflare Workers | `apps/data-service` |
-| Baza | Neon PostgreSQL + Hyperdrive | — |
+| API      | Hono → Cloudflare Workers     | `apps/data-service`     |
+| Baza     | Neon PostgreSQL + Hyperdrive  | —                       |
 
 Szczegóły: [AGENTS.md](./AGENTS.md)
 
@@ -83,11 +83,11 @@ pnpm deploy:user-application
 
 ## API
 
-| Endpoint | Opis |
-|----------|------|
-| `GET /health` | Health check |
-| `GET /cities` | Lista miast |
-| `GET /events?city=warszawa&from=2026-06-24&range=3days` | Koncerty |
-| `GET /admin/sources` | Źródła (`x-api-key`) |
-| `GET /admin/ingestion-runs` | Logi agentów |
-| `POST /admin/cleanup` | Kasuje śmieci z bazy (`x-api-key`) |
+| Endpoint                                                | Opis                               |
+| ------------------------------------------------------- | ---------------------------------- |
+| `GET /health`                                           | Health check                       |
+| `GET /cities`                                           | Lista miast                        |
+| `GET /events?city=warszawa&from=2026-06-24&range=3days` | Koncerty                           |
+| `GET /admin/sources`                                    | Źródła (`x-api-key`)               |
+| `GET /admin/ingestion-runs`                             | Logi agentów                       |
+| `POST /admin/cleanup`                                   | Kasuje śmieci z bazy (`x-api-key`) |

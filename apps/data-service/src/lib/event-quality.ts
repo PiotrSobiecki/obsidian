@@ -7,7 +7,6 @@ import {
   type CityGeoRow,
   type GeoPoint,
 } from "./nearest-city";
-import { lookupVenueCityId } from "./venue-city";
 
 export type { CityGeoRow };
 
@@ -164,54 +163,6 @@ export function resolveEventCityId(
   if (geo && "lat" in geo) {
     return findNearestCityId({ lat: geo.lat, lng: geo.lng }, cities);
   }
-
-  return undefined;
-}
-
-export type AssignCityInput = {
-  title: string;
-  venue_name?: string;
-  city?: string;
-  geo_lat?: number;
-  geo_lng?: number;
-};
-
-/**
- * Przypisuje wydarzenie do miasta z naszej bazy:
- * 1) znany klub → miasto klubu,
- * 2) miasto/miejscowość w treści lub polu city → bezpośrednio lub najbliższe,
- * 3) fallback: miasto źródła (listing per-miasto).
- */
-export function assignEventCityId(
-  item: AssignCityInput,
-  cities: CityGeoRow[],
-  cityIdByToken: Map<string, string>,
-  fallbackCityId: string,
-  options: { isNational: boolean; trustsSource: boolean }
-): string | undefined {
-  const text = `${item.title} ${item.venue_name ?? ""}`.trim();
-  const geo: GeoPoint | undefined =
-    item.geo_lat != null && item.geo_lng != null
-      ? { lat: item.geo_lat, lng: item.geo_lng }
-      : undefined;
-
-  const fromVenue = lookupVenueCityId(item.venue_name, cities);
-  if (fromVenue) return fromVenue;
-
-  if (options.isNational) {
-    const token = item.city ? cityToken(item.city) : "";
-    const fromToken = token ? cityIdByToken.get(token) : undefined;
-    if (fromToken) return fromToken;
-    return resolveEventCityId(text, cities, { explicitCity: item.city, geo });
-  }
-
-  const fromContent = resolveEventCityId(text, cities, {
-    explicitCity: item.city,
-    geo,
-  });
-  if (fromContent) return fromContent;
-
-  if (options.trustsSource) return fallbackCityId;
 
   return undefined;
 }
