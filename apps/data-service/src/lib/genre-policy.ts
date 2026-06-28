@@ -198,7 +198,7 @@ export function buildParseEventsPrompt(
   sourceUrl?: string
 ): string {
   const isFestivalSource =
-    sourceUrl != null && /festiwal|festival|mysticfestival|polandrock|metalmania|castleparty|jarocin/i.test(sourceUrl);
+    sourceUrl != null && /festiwal|festival|mysticfestival|polandrock|metalmania|castleparty|jarocin|innebrzmienia|off-festival/i.test(sourceUrl);
   const isNational = isNationalListingUrl(sourceUrl);
 
   const sourceHint =

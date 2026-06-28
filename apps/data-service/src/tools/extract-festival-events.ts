@@ -1,7 +1,62 @@
 import type { ParsedEvent } from "./parse-events";
 import { parsePolishDateText } from "./extract-venue-events";
 import { isJunkTitle } from "../lib/event-quality";
+import type { GenreMatchContext } from "../lib/genre-policy";
+import { matchesGenrePolicy } from "../lib/genre-policy";
 import { isFestivalSourceUrl } from "../lib/festival-scene";
+
+const MONTHS_PL: Record<string, number> = {
+  stycznia: 1,
+  lutego: 2,
+  marca: 3,
+  kwietnia: 4,
+  maja: 5,
+  czerwca: 6,
+  lipca: 7,
+  sierpnia: 8,
+  wrzesnia: 9,
+  września: 9,
+  pazdziernika: 10,
+  października: 10,
+  listopada: 11,
+  grudnia: 12,
+};
+
+function normalizeMonthToken(token: string): string {
+  return token
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
+function toIsoDateTime(
+  year: number,
+  month: number,
+  day: number,
+  hour = 18,
+  minute = 0
+): string | null {
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const d = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function parseSlashDateTime(
+  day: string,
+  month: string,
+  year: string,
+  hour: string,
+  minute: string
+): string | null {
+  return toIsoDateTime(
+    Number(year),
+    Number(month),
+    Number(day),
+    Number(hour),
+    Number(minute)
+  );
+}
 
 /** Pierwsza przyszła data z JSON-LD (startDate / startTime) na stronie festiwalu. */
 function findJsonLdStartDate(html: string): string | null {
@@ -21,6 +76,18 @@ function findFestivalDateInText(html: string): string | null {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ");
 
+  // np. „2-5 LIPCA 2026” (Inne Brzmienia)
+  const rangeMonth = text.match(
+    /(\d{1,2})\s*-\s*(\d{1,2})\s+([A-Za-ząćęłńóśźżĄĆĘŁŃÓŚŹŻ]+)\s+(\d{4})/i
+  );
+  if (rangeMonth) {
+    const month = MONTHS_PL[normalizeMonthToken(rangeMonth[3])];
+    if (month) {
+      const iso = toIsoDateTime(Number(rangeMonth[4]), month, Number(rangeMonth[1]));
+      if (iso && new Date(iso) >= new Date()) return iso;
+    }
+  }
+
   const range = text.match(
     /(\d{1,2})\s*(?:-|–|—|do)\s*(\d{1,2})\s+([a-ząćęłńóśźż]+)\s+(\d{4})/i
   );
@@ -36,6 +103,78 @@ function findFestivalDateInText(html: string): string | null {
   }
 
   return null;
+}
+
+function cleanArtistTitle(raw: string): string {
+  return raw
+    .replace(/^#+\s*/, "")
+    .replace(/\s*\|.*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Lineup z datą DD/MM/YYYY | HH:MM — np. innebrzmienia.eu (Furia, Therapy? itd.).
+ * Każdy koncert przechodzi matchesGenrePolicy (tylko rock/metal/pokrewne).
+ */
+export function extractFestivalLineupEvents(
+  html: string,
+  festivalName: string,
+  baseUrl: string,
+  genreCtx?: GenreMatchContext
+): ParsedEvent[] {
+  if (!isFestivalSourceUrl(baseUrl)) return [];
+
+  const events: ParsedEvent[] = [];
+  const seen = new Set<string>();
+  const now = new Date();
+
+  const plain = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ");
+
+  const lineupRe =
+    /(?:^|[\n#])([^#\n|]{3,120}?)(?:\s*\|[^#\n]*)?\s+(\d{2})\/(\d{2})\/(\d{4})\s*\|\s*(\d{2}):(\d{2})/gi;
+
+  for (const match of plain.matchAll(lineupRe)) {
+    const title = cleanArtistTitle(match[1]);
+    if (title.length < 3 || isJunkTitle(title)) continue;
+
+    const startsAt = parseSlashDateTime(
+      match[2],
+      match[3],
+      match[4],
+      match[5],
+      match[6]
+    );
+    if (!startsAt || new Date(startsAt) < now) continue;
+
+    if (
+      genreCtx &&
+      !matchesGenrePolicy(title, [], baseUrl, {
+        ...genreCtx,
+        venueName: festivalName,
+      })
+    ) {
+      continue;
+    }
+
+    const key = `${title}|${startsAt}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    events.push({
+      title,
+      artists: [title],
+      starts_at: startsAt,
+      venue_name: festivalName,
+      ticket_url: baseUrl,
+    });
+  }
+
+  return events;
 }
 
 /**

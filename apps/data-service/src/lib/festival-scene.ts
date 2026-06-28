@@ -6,6 +6,8 @@ const FESTIVAL_URL_PATTERNS = [
   /metalmania/i,
   /castleparty/i,
   /jarocin/i,
+  /innebrzmienia/i,
+  /off-festival/i,
   /ebilet\.pl\/festiwal/i,
   /goingapp\.pl\/festiwal/i,
 ];
@@ -16,6 +18,8 @@ const ROCK_METAL_FESTIVALS = [
   "Metalmania",
   "Castle Party",
   "Jarocin",
+  "Inne Brzmienia",
+  "OFF Festival",
   "Full Metal Mountain",
   "Rock Fest",
 ];

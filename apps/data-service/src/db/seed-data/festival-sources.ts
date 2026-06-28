@@ -40,6 +40,20 @@ export const FESTIVAL_SOURCES: SeedSource[] = [
     trustScore: 0.88,
   },
   {
+    citySlug: "lublin",
+    url: "https://innebrzmienia.eu/",
+    type: "venue",
+    platform: "Inne Brzmienia",
+    trustScore: 0.9,
+  },
+  {
+    citySlug: "katowice",
+    url: "https://off-festival.pl/",
+    type: "venue",
+    platform: "OFF Festival",
+    trustScore: 0.92,
+  },
+  {
     citySlug: "warszawa",
     url: "https://www.ebilet.pl/festiwale",
     type: "aggregator",

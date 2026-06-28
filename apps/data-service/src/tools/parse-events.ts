@@ -16,7 +16,7 @@ import {
 } from "../lib/genre-policy";
 import { isDiscouragedSourceUrl, isJunkTitle } from "../lib/event-quality";
 import { extractVenueEventsFromHtml } from "./extract-venue-events";
-import { extractFestivalHomepageEvent } from "./extract-festival-events";
+import { extractFestivalHomepageEvent, extractFestivalLineupEvents } from "./extract-festival-events";
 import { extractTicketmasterEvents } from "./extract-ticketmaster-events";
 
 export { isJunkTitle };
@@ -377,6 +377,11 @@ export async function parseEventsFromHtml(
         })()
       : [];
 
+  const festivalLineup =
+    rawHtml && isFestival && defaultVenue
+      ? extractFestivalLineupEvents(rawHtml, defaultVenue, ctx.sourceUrl!, genreCtx)
+      : [];
+
   // Ogólnopolski listing (Ticketmaster)
   // go deterministycznym parserem zamiast zawodnego 8B (gubił SOAD/Judas i mylił
   // miasta). Jeśli parser coś znalazł, pomijamy LLM dla tego źródła.
@@ -457,12 +462,21 @@ export async function parseEventsFromHtml(
     }
   }
 
-  if (llmEvents.length === 0 && jsonLd.length === 0 && venueHeuristic.length === 0 && festivalFallback.length === 0) {
+  if (
+    llmEvents.length === 0 &&
+    jsonLd.length === 0 &&
+    venueHeuristic.length === 0 &&
+    festivalFallback.length === 0 &&
+    festivalLineup.length === 0
+  ) {
     return [];
   }
 
   const merged = mergeUniqueEvents(
-    mergeUniqueEvents(mergeUniqueEvents(jsonLd, venueHeuristic), festivalFallback),
+    mergeUniqueEvents(
+      mergeUniqueEvents(mergeUniqueEvents(jsonLd, venueHeuristic), festivalFallback),
+      festivalLineup
+    ),
     llmEvents
   );
   return attachTicketUrls(merged, rawHtml, ctx.sourceUrl);

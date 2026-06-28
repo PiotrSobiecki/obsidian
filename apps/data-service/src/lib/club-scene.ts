@@ -97,6 +97,8 @@ const CLUB_URL_PATTERNS = [
   /metalmania/i,
   /castleparty/i,
   /jarocin/i,
+  /innebrzmienia/i,
+  /off-festival/i,
   /hydrozagadka/i,
   /pogoclub/i,
   /alchemia\.com/i,
