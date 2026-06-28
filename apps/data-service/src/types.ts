@@ -12,6 +12,16 @@ export type DiscoveryCityMessage = {
   citySlug: string;
 };
 
+/** Jeden komunikat kolejki collect = jedno źródło do pobrania i sparsowania. */
+export type CollectSourceMessage = {
+  sourceId: string;
+  url: string;
+  type: string;
+  platform: string | null;
+  cityId: string;
+  cityName: string;
+};
+
 export type WorkerBindings = {
   HYPERDRIVE: { connectionString: string };
   DATABASE_URL?: string;
@@ -20,6 +30,7 @@ export type WorkerBindings = {
   DISCOVERY_AGENT: DurableObjectNamespace;
   COLLECTOR_AGENT: DurableObjectNamespace;
   DISCOVERY_QUEUE: Queue<DiscoveryCityMessage>;
+  COLLECT_QUEUE: Queue<CollectSourceMessage>;
   BRAVE_SEARCH_API_KEY?: string;
   API_KEY?: string;
   ENVIRONMENT?: string;

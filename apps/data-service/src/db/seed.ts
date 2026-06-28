@@ -1,4 +1,4 @@
-import { isNull, notInArray, or, sql } from "drizzle-orm";
+import { isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { loadEnvTarget, parseEnvTarget } from "./load-env";
@@ -90,11 +90,11 @@ for (const source of ALL_SEED_SOURCES) {
     });
 }
 
-const seedUrls = ALL_SEED_SOURCES.map((s) => s.url);
-await db
-  .update(sources)
-  .set({ status: "inactive" })
-  .where(notInArray(sources.url, seedUrls));
+// UWAGA: NIE gasimy tu źródeł spoza seedu. Wcześniej `notInArray(url, seedUrls)`
+// ustawiał WSZYSTKIE discovered sources (setki klubów/festiwali znalezionych przez
+// Discovery) na inactive przy każdym reseedzie — przez co Collector tracił 90%+
+// pokrycia. Reseed ma tylko (re)tworzyć seed + miasta, a nie kasować dorobek
+// Discovery. Stare, usunięte z seedu URL-e dezaktywuj ręcznie, jeśli zajdzie potrzeba.
 
 const removed = await db
   .delete(events)

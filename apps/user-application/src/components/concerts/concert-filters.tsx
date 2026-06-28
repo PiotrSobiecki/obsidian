@@ -33,9 +33,9 @@ export function ConcertFilters({
   loading,
 }: ConcertFiltersProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
-      <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,2fr)_auto]">
-        <div className="sm:col-span-1">
+    <div className="max-w-full overflow-hidden rounded-lg border border-border bg-card p-4 sm:p-6">
+      <div className="grid w-full min-w-0 grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,2fr)_auto]">
+        <div className="min-w-0 sm:col-span-1">
           <label htmlFor="city" className="mb-2 block text-sm font-medium text-muted-foreground">
             Miasto
           </label>
@@ -54,23 +54,23 @@ export function ConcertFilters({
           </select>
         </div>
 
-        <div className="sm:col-span-1">
+        <div className="min-w-0 sm:col-span-1">
           <label htmlFor="date" className="mb-2 block text-sm font-medium text-muted-foreground">
             Data
           </label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+          <div className="relative min-w-0 overflow-hidden">
+            <Calendar className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-primary" />
             <input
               id="date"
               type="date"
               value={date}
               onChange={(e) => onDateChange(e.target.value)}
-              className="w-full rounded-md border border-border bg-secondary py-2.5 pl-10 pr-3 text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
+              className="date-input w-full min-w-0 max-w-full rounded-md border border-border bg-secondary py-2.5 pl-10 pr-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
         </div>
 
-        <div className="sm:col-span-2 lg:col-span-1">
+        <div className="min-w-0 sm:col-span-2 lg:col-span-1">
           <span className="mb-2 block text-sm font-medium text-muted-foreground">Zakres</span>
           <div className="grid grid-cols-4 gap-2">
             {RANGE_OPTIONS.map((opt) => (
@@ -90,7 +90,7 @@ export function ConcertFilters({
           </div>
         </div>
 
-        <div className="sm:col-span-2 lg:col-span-1">
+        <div className="min-w-0 sm:col-span-2 lg:col-span-1">
           <button
             type="button"
             onClick={onSearch}

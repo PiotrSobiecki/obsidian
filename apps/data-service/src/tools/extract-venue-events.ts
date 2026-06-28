@@ -1,4 +1,5 @@
 import type { ParsedEvent } from "./parse-events";
+import { isGenericNavigationPath, isJunkTitle } from "../lib/event-quality";
 import { looksLikeTicketUrl, resolveTicketUrl } from "../lib/ticket-url";
 
 const MONTHS_PL: Record<string, number> = {
@@ -140,6 +141,8 @@ export function extractVenueEventsFromHtml(
       continue;
     }
 
+    if (isGenericNavigationPath(pathname)) continue;
+
     const startsAt =
       parseDateFromSlug(pathname) ??
       parseDateFromSlug(ticketUrl) ??
@@ -149,7 +152,7 @@ export function extractVenueEventsFromHtml(
     if (!startsAt || new Date(startsAt) < now) continue;
 
     const title = label.length >= 4 ? label : titleFromSlug(pathname);
-    if (title.length < 3) continue;
+    if (title.length < 3 || isJunkTitle(title)) continue;
 
     const key = `${title}|${startsAt}`.toLowerCase();
     if (seen.has(key)) continue;
@@ -175,6 +178,7 @@ export function extractVenueEventsFromHtml(
     if (!titleMatch) continue;
 
     const title = decodeHtml(titleMatch[2]).trim();
+    if (isJunkTitle(title)) continue;
     const ticketUrl = resolveTicketUrl(titleMatch[1], baseUrl) ?? undefined;
     const key = `${title}|${startsAt}`.toLowerCase();
     if (seen.has(key)) continue;

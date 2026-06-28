@@ -3,8 +3,13 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getDb } from "./db/client";
 import { cities, events, ingestionRuns, sources, venues } from "./db/schema";
-import { executeCollection } from "./cron/daily-collect";
+import {
+  enqueueCollection,
+  executeCollection,
+  runCollectionCleanup,
+} from "./cron/daily-collect";
 import { enqueueDiscovery, executeDiscovery } from "./cron/weekly-discovery";
+import { inArray } from "drizzle-orm";
 import { resolveEventDateRange } from "./lib/date-range";
 import { hasEventSource } from "./lib/real-events";
 import { sanitizeTicketUrl, ticketProviderLabel } from "./lib/ticket-url";
@@ -317,6 +322,66 @@ app.post("/admin/discover/enqueue", async (c) => {
   } catch (error) {
     console.error("POST /admin/discover/enqueue error:", error);
     return c.json({ error: "Enqueue failed" }, 500);
+  }
+});
+
+// Wrzuca WSZYSTKIE uprawnione źródła do kolejki collect (bez limitu 25).
+// Consumer obrabia je w tle po kilka/wywołanie — używane do backfillu i przez cron.
+// ?force=1 ignoruje okno lastFetchedAt (pobiera nawet świeżo odpytane).
+app.post("/admin/collect/enqueue", async (c) => {
+  if (!requireAdmin(c)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const force = c.req.query("force") === "1";
+  const urlLike = c.req.query("urlLike") || undefined;
+
+  try {
+    const enqueued = await enqueueCollection(c.env, { force, urlLike });
+    const cleanup = await runCollectionCleanup(c.env, { sourcesEnqueued: enqueued });
+    return c.json({ ok: true, enqueued, ...cleanup });
+  } catch (error) {
+    console.error("POST /admin/collect/enqueue error:", error);
+    return c.json({ error: "Enqueue failed" }, 500);
+  }
+});
+
+// Reaktywuje dobre źródła znalezione przez Discovery, które reseed zgasił do
+// inactive. Domyślnie: venue/aggregator/ticketing z trustScore >= 0.8.
+app.post("/admin/sources/reactivate", async (c) => {
+  if (!requireAdmin(c)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const minTrustRaw = c.req.query("minTrust");
+  const minTrust = minTrustRaw ? Number.parseFloat(minTrustRaw) : 0.8;
+  if (Number.isNaN(minTrust) || minTrust < 0 || minTrust > 1) {
+    return c.json({ error: "minTrust must be between 0 and 1" }, 400);
+  }
+
+  const typesRaw = c.req.query("types");
+  const types = typesRaw
+    ? typesRaw.split(",").map((t) => t.trim()).filter(Boolean)
+    : ["venue", "aggregator", "ticketing"];
+
+  try {
+    const db = getDb(c.env);
+    const reactivated = await db
+      .update(sources)
+      .set({ status: "active" })
+      .where(
+        and(
+          eq(sources.status, "inactive"),
+          inArray(sources.type, types),
+          gte(sources.trustScore, minTrust)
+        )
+      )
+      .returning({ id: sources.id });
+
+    return c.json({ ok: true, reactivated: reactivated.length, minTrust, types });
+  } catch (error) {
+    console.error("POST /admin/sources/reactivate error:", error);
+    return c.json({ error: "Reactivate failed" }, 500);
   }
 });
 

@@ -10,10 +10,15 @@ import {
 import {
   buildClassifySourcePrompt,
   buildParseEventsPrompt,
+  isNationalListingUrl,
   matchesGenrePolicy,
   type GenreMatchContext,
 } from "../lib/genre-policy";
+import { isDiscouragedSourceUrl, isJunkTitle } from "../lib/event-quality";
 import { extractVenueEventsFromHtml } from "./extract-venue-events";
+import { extractTicketmasterEvents } from "./extract-ticketmaster-events";
+
+export { isJunkTitle };
 
 export type ParsedEvent = {
   title: string;
@@ -42,6 +47,8 @@ export type SourceContext = {
   sourceUrl?: string;
   /** Nazwa klubu z tabeli sources.platform */
   venueName?: string;
+  /** Nazwy obsługiwanych miast — dla ogólnopolskich listingów (Ticketmaster). */
+  cityNames?: string[];
 };
 
 function escapeRegex(s: string): string {
@@ -195,6 +202,8 @@ function normalizeJsonLdEvent(
     ticket_url: ticketUrl ? sanitizeTicketUrl(ticketUrl) ?? undefined : undefined,
   };
 
+  if (isJunkTitle(title)) return null;
+
   if (!matchesGenrePolicy(event.title, event.artists, ticketUrl, {
     ...genreCtx,
     venueName: venueName || genreCtx?.venueName,
@@ -338,60 +347,92 @@ export async function parseEventsFromHtml(
 
   const venueHeuristic =
     rawHtml && ctx.sourceType === "venue" && ctx.sourceUrl
-      ? extractVenueEventsFromHtml(rawHtml, defaultVenue, ctx.sourceUrl).filter((e) =>
-          matchesGenrePolicy(e.title, e.artists, e.ticket_url, {
-            ...genreCtx,
-            venueName: e.venue_name,
-          })
+      ? extractVenueEventsFromHtml(rawHtml, defaultVenue, ctx.sourceUrl).filter(
+          (e) =>
+            !isJunkTitle(e.title) &&
+            matchesGenrePolicy(e.title, e.artists, e.ticket_url, {
+              ...genreCtx,
+              venueName: e.venue_name,
+            })
         )
       : [];
 
-  const htmlLimit = ctx.sourceType === "venue" ? 12000 : 8000;
+  // Ogólnopolski listing (Ticketmaster) — struktura jest regularna, więc bierzemy
+  // go deterministycznym parserem zamiast zawodnego 8B (gubił SOAD/Judas i mylił
+  // miasta). Jeśli parser coś znalazł, pomijamy LLM dla tego źródła.
+  if (isNationalListingUrl(ctx.sourceUrl) && ctx.cityNames?.length) {
+    const tm = extractTicketmasterEvents(htmlSnippet, ctx.cityNames).filter((e) =>
+      matchesGenrePolicy(e.title, e.artists, e.ticket_url, {
+        ...genreCtx,
+        venueName: e.venue_name,
+      })
+    );
+    if (tm.length > 0) {
+      return attachTicketUrls(mergeUniqueEvents(jsonLd, tm), rawHtml, ctx.sourceUrl);
+    }
+  }
+
+  // Listingi (agregator/ogólnopolski) mają wiele koncertów rozsianych po całej
+  // stronie — jeden kawałek 8 KB gubił większość. Dzielimy oczyszczony tekst na
+  // kawałki i odpytujemy model po kolei, scalając wyniki. Venue/kluby to małe
+  // strony → wystarczy jeden kawałek.
+  const chunkSize = ctx.sourceType === "venue" ? 12000 : 8000;
+  const maxChunks = isNationalListingUrl(ctx.sourceUrl)
+    ? 12
+    : ctx.sourceType === "aggregator"
+      ? 5
+      : 1;
+
+  const chunks: string[] = [];
+  for (
+    let offset = 0;
+    offset < htmlSnippet.length && chunks.length < maxChunks;
+    offset += chunkSize
+  ) {
+    chunks.push(htmlSnippet.slice(offset, offset + chunkSize));
+  }
+  if (chunks.length === 0) chunks.push("");
+
+  const parsePromptContent = buildParseEventsPrompt(
+    ctx.cityName,
+    ctx.sourceType,
+    ctx.sourceUrl
+  );
 
   let llmEvents: ParsedEvent[] = [];
-  try {
-    const response = await ai.run(WORKERS_AI_MODEL, {
-      messages: [
-        {
-          role: "system",
-          content: buildParseEventsPrompt(
-            ctx.cityName,
-            ctx.sourceType,
-            ctx.sourceUrl
-          ),
-        },
-        {
-          role: "user",
-          content: htmlSnippet.slice(0, htmlLimit),
-        },
-      ],
-    });
+  for (const chunk of chunks) {
+    try {
+      const response = await ai.run(WORKERS_AI_MODEL, {
+        messages: [
+          { role: "system", content: parsePromptContent },
+          { role: "user", content: chunk },
+        ],
+      });
 
-    const text =
-      typeof response === "object" && response !== null && "response" in response
-        ? String((response as { response: string }).response)
-        : String(response);
+      const text =
+        typeof response === "object" && response !== null && "response" in response
+          ? String((response as { response: string }).response)
+          : String(response);
 
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      try {
-        llmEvents = (JSON.parse(jsonMatch[0]) as ParsedEvent[]).filter(
-          (e) =>
-            e.title &&
-            e.starts_at &&
-            !Number.isNaN(Date.parse(e.starts_at)) &&
-            matchesGenrePolicy(e.title, e.artists ?? [], e.ticket_url, {
-              sourceType: ctx.sourceType,
-              sourceUrl: ctx.sourceUrl,
-              venueName: e.venue_name || defaultVenue,
-            })
-        );
-      } catch {
-        llmEvents = [];
-      }
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) continue;
+
+      const chunkEvents = (JSON.parse(jsonMatch[0]) as ParsedEvent[]).filter(
+        (e) =>
+          e.title &&
+          !isJunkTitle(e.title) &&
+          e.starts_at &&
+          !Number.isNaN(Date.parse(e.starts_at)) &&
+          matchesGenrePolicy(e.title, e.artists ?? [], e.ticket_url, {
+            sourceType: ctx.sourceType,
+            sourceUrl: ctx.sourceUrl,
+            venueName: e.venue_name || defaultVenue,
+          })
+      );
+      llmEvents = mergeUniqueEvents(llmEvents, chunkEvents);
+    } catch (error) {
+      console.warn("[parse-events] LLM chunk failed, skipping:", error);
     }
-  } catch (error) {
-    console.warn("[parse-events] LLM failed, using JSON-LD only:", error);
   }
 
   if (llmEvents.length === 0 && jsonLd.length === 0 && venueHeuristic.length === 0) {
@@ -422,6 +463,8 @@ export async function classifySearchResult(
   result: { title: string; url: string; description: string },
   cityName: string
 ): Promise<ClassifiedSource | null> {
+  if (isDiscouragedSourceUrl(result.url)) return null;
+
   if (isLikelyClubSourceUrl(result.url) || isFestivalSourceUrl(result.url)) {
     return {
       url: result.url,

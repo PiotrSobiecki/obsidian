@@ -54,6 +54,10 @@
 			{
 				"binding": "DISCOVERY_QUEUE",
 				"queue": "obsidian-discovery"
+			},
+			{
+				"binding": "COLLECT_QUEUE",
+				"queue": "obsidian-collect"
 			}
 		],
 		"consumers": [
@@ -63,6 +67,13 @@
 				"max_concurrency": 1,
 				"max_retries": 3,
 				"dead_letter_queue": "obsidian-discovery-dlq"
+			},
+			{
+				"queue": "obsidian-collect",
+				"max_batch_size": 3,
+				"max_concurrency": 2,
+				"max_retries": 3,
+				"dead_letter_queue": "obsidian-collect-dlq"
 			}
 		]
 	},
@@ -116,6 +127,10 @@
 					{
 						"binding": "DISCOVERY_QUEUE",
 						"queue": "obsidian-discovery"
+					},
+					{
+						"binding": "COLLECT_QUEUE",
+						"queue": "obsidian-collect"
 					}
 				],
 				"consumers": [
@@ -125,6 +140,13 @@
 						"max_concurrency": 1,
 						"max_retries": 3,
 						"dead_letter_queue": "obsidian-discovery-dlq"
+					},
+					{
+						"queue": "obsidian-collect",
+						"max_batch_size": 3,
+						"max_concurrency": 2,
+						"max_retries": 3,
+						"dead_letter_queue": "obsidian-collect-dlq"
 					}
 				]
 			}

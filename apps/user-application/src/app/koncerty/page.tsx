@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navbar } from "@/components/ui/navbar";
 import { Footer } from "@/components/ui/footer";
 import { ConcertFilters } from "@/components/concerts/concert-filters";
+import { ConcertSearch } from "@/components/concerts/concert-search";
 import { ConcertList } from "@/components/concerts/concert-list";
+import { POLISH_CITIES } from "@/data/cities-pl";
+import { filterConcertsByQuery } from "@/lib/filter-concerts";
 import {
   fetchEvents,
   type ConcertEvent,
@@ -21,6 +24,7 @@ export default function KoncertyPage() {
   const [date, setDate] = useState(todayIso());
   const [range, setRange] = useState<DateRange>("7days");
   const [events, setEvents] = useState<ConcertEvent[]>([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
@@ -67,6 +71,7 @@ export default function KoncertyPage() {
 
   const handleCityChange = useCallback((nextCity: string) => {
     setCity(nextCity);
+    setQuery("");
     setEvents([]);
     setError(null);
 
@@ -75,6 +80,14 @@ export default function KoncertyPage() {
       setLoading(false);
     }
   }, []);
+
+  const cityName =
+    POLISH_CITIES.find((c) => c.slug === city)?.name ?? city;
+
+  const filteredEvents = useMemo(
+    () => filterConcertsByQuery(events, query),
+    [events, query]
+  );
 
   const handleRangeChange = useCallback((next: DateRange) => {
     setRange(next);
@@ -86,7 +99,7 @@ export default function KoncertyPage() {
   return (
     <main className="min-h-screen bg-background">
       <Navbar />
-      <div className="container mx-auto px-4 pb-16 pt-28">
+      <div className="container mx-auto min-w-0 max-w-full px-4 pb-16 pt-28">
         <div className="mb-8">
           <h1 className="font-display text-4xl font-bold md:text-5xl">
             Znajdź <span className="text-primary">koncert</span>
@@ -109,6 +122,19 @@ export default function KoncertyPage() {
           />
         </div>
 
+        {city && (
+          <div className="mb-6">
+            <ConcertSearch
+              cityName={cityName}
+              value={query}
+              onChange={setQuery}
+              resultCount={searched && !loading ? filteredEvents.length : undefined}
+              totalCount={searched && !loading ? events.length : undefined}
+              disabled={loading}
+            />
+          </div>
+        )}
+
         {loading && (
           <div className="rounded-lg border border-border bg-card p-12 text-center text-muted-foreground">
             Szukam koncertów…
@@ -122,7 +148,9 @@ export default function KoncertyPage() {
           </div>
         )}
 
-        {searched && !loading && !error && <ConcertList events={events} />}
+        {searched && !loading && !error && (
+          <ConcertList events={filteredEvents} query={query} />
+        )}
 
         {!searched && !loading && (
           <div className="rounded-lg border border-dashed border-border p-12 text-center text-muted-foreground">

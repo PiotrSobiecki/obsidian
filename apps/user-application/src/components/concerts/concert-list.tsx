@@ -3,18 +3,21 @@ import type { ConcertEvent } from "@/lib/api";
 
 type ConcertListProps = {
   events: ConcertEvent[];
+  query?: string;
 };
 
-export function ConcertList({ events }: ConcertListProps) {
+export function ConcertList({ events, query }: ConcertListProps) {
   if (events.length === 0) {
+    const trimmed = query?.trim();
     return (
       <div className="rounded-lg border border-border bg-card p-12 text-center">
         <p className="font-display text-xl text-muted-foreground">
-          Brak koncertów w wybranym okresie
+          {trimmed ? `Brak wyników dla „${trimmed}"` : "Brak koncertów w wybranym okresie"}
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Pokazujemy koncerty klubowe i festiwale rock/metal zebrane z oficjalnych
-          źródeł. Spróbuj szerszego zakresu dat lub innego miasta.
+          {trimmed
+            ? "Sprawdź pisownię lub wyczyść wyszukiwanie, aby zobaczyć wszystkie koncerty."
+            : "Pokazujemy koncerty klubowe i festiwale rock/metal zebrane z oficjalnych źródeł. Spróbuj szerszego zakresu dat lub innego miasta."}
         </p>
       </div>
     );
