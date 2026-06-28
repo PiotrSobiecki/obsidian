@@ -17,13 +17,10 @@ function cityToken(city: string): string {
     .replace(/\p{M}/gu, "");
 }
 
-/** URL-e odkrywane przez Brave, które dają śmieci lub duplikują seedowane źródła. */
+/** Tylko domeny, które dają wyłącznie śmieciowe listingi — bez masowego wyłączania portali. */
 const DISCOURAGED_SOURCE_PATTERNS = [
-  /rockmetal\.pl/i,
-  /stage24\.pl/i,
-  /ticketmaster\.pl\/(artist|venue)\//i,
-  /naszemiasto\.pl/i,
-  /interia\.pl/i,
+  /^https?:\/\/([^/]+\.)?rockmetal\.pl(\/|$)/i,
+  /^https?:\/\/([^/]+\.)?stage24\.pl(\/|$)/i,
 ];
 
 const GENERIC_NAV_SLUGS = new Set([

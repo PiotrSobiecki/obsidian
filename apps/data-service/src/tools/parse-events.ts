@@ -16,6 +16,7 @@ import {
 } from "../lib/genre-policy";
 import { isDiscouragedSourceUrl, isJunkTitle } from "../lib/event-quality";
 import { extractVenueEventsFromHtml } from "./extract-venue-events";
+import { extractFestivalHomepageEvent } from "./extract-festival-events";
 import { extractTicketmasterEvents } from "./extract-ticketmaster-events";
 
 export { isJunkTitle };
@@ -329,9 +330,14 @@ export async function parseEventsFromHtml(
   };
 
   const defaultVenue = ctx.venueName ?? "";
+  const isFestival = isFestivalSourceUrl(ctx.sourceUrl ?? "");
 
   const jsonLd = rawHtml
-    ? extractJsonLdEvents(rawHtml, ctx.cityName, genreCtx)
+    ? extractJsonLdEvents(
+        rawHtml,
+        isFestival ? undefined : ctx.cityName,
+        genreCtx
+      )
         .map((e) => ({
           ...e,
           venue_name: e.venue_name || defaultVenue,
@@ -357,7 +363,21 @@ export async function parseEventsFromHtml(
         )
       : [];
 
-  // Ogólnopolski listing (Ticketmaster) — struktura jest regularna, więc bierzemy
+  const festivalFallback =
+    rawHtml && isFestival && defaultVenue
+      ? (() => {
+          const e = extractFestivalHomepageEvent(rawHtml, defaultVenue, ctx.sourceUrl!);
+          return e &&
+            matchesGenrePolicy(e.title, e.artists, e.ticket_url, {
+              ...genreCtx,
+              venueName: e.venue_name,
+            })
+            ? [e]
+            : [];
+        })()
+      : [];
+
+  // Ogólnopolski listing (Ticketmaster)
   // go deterministycznym parserem zamiast zawodnego 8B (gubił SOAD/Judas i mylił
   // miasta). Jeśli parser coś znalazł, pomijamy LLM dla tego źródła.
   if (isNationalListingUrl(ctx.sourceUrl) && ctx.cityNames?.length) {
@@ -376,12 +396,14 @@ export async function parseEventsFromHtml(
   // stronie — jeden kawałek 8 KB gubił większość. Dzielimy oczyszczony tekst na
   // kawałki i odpytujemy model po kolei, scalając wyniki. Venue/kluby to małe
   // strony → wystarczy jeden kawałek.
-  const chunkSize = ctx.sourceType === "venue" ? 12000 : 8000;
+  const chunkSize = isFestival ? 14000 : ctx.sourceType === "venue" ? 12000 : 8000;
   const maxChunks = isNationalListingUrl(ctx.sourceUrl)
     ? 12
-    : ctx.sourceType === "aggregator"
-      ? 5
-      : 1;
+    : isFestival
+      ? 6
+      : ctx.sourceType === "aggregator"
+        ? 5
+        : 1;
 
   const chunks: string[] = [];
   for (
@@ -435,11 +457,14 @@ export async function parseEventsFromHtml(
     }
   }
 
-  if (llmEvents.length === 0 && jsonLd.length === 0 && venueHeuristic.length === 0) {
+  if (llmEvents.length === 0 && jsonLd.length === 0 && venueHeuristic.length === 0 && festivalFallback.length === 0) {
     return [];
   }
 
-  const merged = mergeUniqueEvents(mergeUniqueEvents(jsonLd, venueHeuristic), llmEvents);
+  const merged = mergeUniqueEvents(
+    mergeUniqueEvents(mergeUniqueEvents(jsonLd, venueHeuristic), festivalFallback),
+    llmEvents
+  );
   return attachTicketUrls(merged, rawHtml, ctx.sourceUrl);
 }
 

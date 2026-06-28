@@ -43,6 +43,7 @@ export default {
               type: body.type,
               platform: body.platform,
               cityId: body.cityId,
+              citySlug: body.citySlug,
               cityName: body.cityName,
             },
             now

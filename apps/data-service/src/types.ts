@@ -19,6 +19,7 @@ export type CollectSourceMessage = {
   type: string;
   platform: string | null;
   cityId: string;
+  citySlug: string;
   cityName: string;
 };
 

@@ -1,3 +1,5 @@
+import { normalizeVenueName } from "./event-quality";
+
 /** Kluby rock/metal per miasto — używane w zapytaniach Discovery. */
 export const CLUBS_BY_CITY_SLUG: Record<string, string[]> = {
   warszawa: [
@@ -143,4 +145,41 @@ export const SMALL_VENUE_KEYWORDS = [
 export function looksLikeSmallClubVenue(venueName: string): boolean {
   const lower = venueName.toLowerCase();
   return SMALL_VENUE_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+/** Nazwa sali (lower) → slugi miast, w których występuje w naszej scenie. */
+const VENUE_TO_CITY_SLUGS = new Map<string, string[]>();
+
+for (const [citySlug, clubs] of Object.entries(CLUBS_BY_CITY_SLUG)) {
+  for (const club of clubs) {
+    const key = normalizeVenueName(club).toLowerCase();
+    const list = VENUE_TO_CITY_SLUGS.get(key) ?? [];
+    if (!list.includes(citySlug)) list.push(citySlug);
+    VENUE_TO_CITY_SLUGS.set(key, list);
+  }
+}
+
+export type CityRef = { id: string; slug: string };
+
+/**
+ * Dla znanych sal (np. Progresja w Warszawie i Poznaniu) — jeśli źródło jest
+ * przypięte do miasta, w którym ta sala występuje, ufamy kotwicy źródła.
+ */
+export function resolveCityIdForKnownVenue(
+  venueName: string | null | undefined,
+  sourceCity: CityRef,
+  allCities: CityRef[]
+): string | undefined {
+  if (!venueName) return undefined;
+  const key = normalizeVenueName(venueName).toLowerCase();
+  const slugs = VENUE_TO_CITY_SLUGS.get(key);
+  if (!slugs?.length) return undefined;
+
+  if (slugs.includes(sourceCity.slug)) {
+    return sourceCity.id;
+  }
+  if (slugs.length === 1) {
+    return allCities.find((c) => c.slug === slugs[0])?.id;
+  }
+  return undefined;
 }

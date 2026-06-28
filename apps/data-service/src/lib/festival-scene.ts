@@ -25,8 +25,9 @@ export function isFestivalSourceUrl(url: string): boolean {
 }
 
 export function isFestivalEvent(title: string, venueName = ""): boolean {
-  const text = `${title} ${venueName}`;
-  return /\bfestiwal\b|\bfestival\b/i.test(text);
+  const text = `${title} ${venueName}`.toLowerCase();
+  if (/\bfestiwal\b|\bfestival\b/.test(text)) return true;
+  return ROCK_METAL_FESTIVALS.some((name) => text.includes(name.toLowerCase()));
 }
 
 export { ROCK_METAL_FESTIVALS };

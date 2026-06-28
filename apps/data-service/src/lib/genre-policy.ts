@@ -4,7 +4,7 @@
  */
 
 import { CLUBS_BY_CITY_SLUG, isLikelyClubSourceUrl, looksLikeSmallClubVenue } from "./club-scene";
-import { ROCK_METAL_FESTIVALS } from "./festival-scene";
+import { isFestivalSourceUrl, ROCK_METAL_FESTIVALS } from "./festival-scene";
 
 export const GENRE_POLICY = {
   include: [
@@ -327,6 +327,12 @@ export function matchesGenrePolicy(
   const sourceUrl = context?.sourceUrl ?? "";
   const fromRockClub =
     looksLikeSmallClubVenue(venueName) || isLikelyClubSourceUrl(sourceUrl);
+
+  if (isFestivalSourceUrl(sourceUrl)) {
+    return !/\b(disco|techno|house|trance|edm|hip.?hop|rap|andrzejki|sylwester|disco polo|kabaret|stand.?up|opera|musical|balet)\b/i.test(
+      text
+    );
+  }
 
   if (EXCLUDE_PATTERNS.some((re) => re.test(text))) {
     return false;

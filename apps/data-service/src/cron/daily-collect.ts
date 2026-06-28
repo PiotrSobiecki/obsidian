@@ -14,7 +14,9 @@ import {
   venuesLikelySame,
   type CityGeoRow,
 } from "../lib/event-quality";
+import { isFestivalEvent, isFestivalSourceUrl } from "../lib/festival-scene";
 import { isNationalListingUrl } from "../lib/genre-policy";
+import { resolveCityIdForKnownVenue } from "../lib/club-scene";
 import { sanitizeTicketUrl } from "../lib/ticket-url";
 import { fetchPage, stripHtml } from "../tools/fetch-page";
 import { normalizeCityToken, parseEventsFromHtml } from "../tools/parse-events";
@@ -41,6 +43,7 @@ export type CollectableSource = {
   type: string;
   platform: string | null;
   cityId: string;
+  citySlug: string;
   cityName: string;
 };
 
@@ -102,9 +105,11 @@ export async function collectSource(
   const isNational = isNationalListingUrl(source.url);
   const stripLimit = isNational
     ? 120000
-    : source.type === "venue"
-      ? 18000
-      : 48000;
+    : isFestivalSourceUrl(source.url)
+      ? 80000
+      : source.type === "venue"
+        ? 18000
+        : 48000;
   const snippet = stripHtml(html, stripLimit);
 
   // Mapa miast — ogólnopolskie listingi (TM) oraz odkryte agregatory bez URL per-miasto.
@@ -153,7 +158,19 @@ export async function collectSource(
     if (startsAt < now) continue;
 
     let eventCityId = source.cityId;
-    if (isNational && cityIdByToken && allCities) {
+    const cityRefs =
+      allCities?.map((c) => ({ id: c.id, slug: c.slug })) ?? [
+        { id: source.cityId, slug: source.citySlug },
+      ];
+
+    if (source.type === "venue" || source.type === "social") {
+      const knownVenueCity = resolveCityIdForKnownVenue(
+        item.venue_name ?? source.platform,
+        { id: source.cityId, slug: source.citySlug },
+        cityRefs
+      );
+      eventCityId = knownVenueCity ?? source.cityId;
+    } else if (isNational && cityIdByToken && allCities) {
       const text = `${item.title} ${item.venue_name ?? ""}`;
       const token = item.city ? normalizeCityToken(item.city) : "";
       let resolved = token ? cityIdByToken.get(token) : undefined;
@@ -198,7 +215,7 @@ export async function collectSource(
       .where(eq(events.fingerprint, fingerprint))
       .limit(1);
 
-    if (!existing) {
+    if (!existing && !isFestivalEvent(item.title, venueLabel ?? "")) {
       const windowStart = new Date(startsAt.getTime() - 3 * 60 * 60 * 1000);
       const windowEnd = new Date(startsAt.getTime() + 3 * 60 * 60 * 1000);
       const candidates = await db
@@ -221,6 +238,7 @@ export async function collectSource(
 
       const duplicate = candidates.find(
         (c) =>
+          !isFestivalEvent(c.title, c.venueName ?? "") &&
           titlesLikelySameEvent(c.title, item.title) &&
           venuesLikelySame(c.venueName, venueLabel)
       );
@@ -238,6 +256,7 @@ export async function collectSource(
       await db
         .update(events)
         .set({
+          cityId: eventCityId,
           title: mergedTitle,
           artistsJson: item.artists ?? [],
           ticketUrl: ticketUrl ?? existing.ticketUrl ?? undefined,
@@ -341,8 +360,13 @@ export async function runCollectionCleanup(
           .returning({ id: events.id })
       : [];
 
-  const allSources = await db.select({ id: sources.id, url: sources.url }).from(sources);
-  const discouragedSourceIds = allSources
+  // Kasuj eventy ze źródeł rockmetal/stage24; nie wyłączaj masowo innych URL-i.
+  const blockedSources = await db
+    .select({ id: sources.id, url: sources.url })
+    .from(sources)
+    .where(or(eq(sources.status, "active"), eq(sources.status, "pending_review")));
+
+  const discouragedSourceIds = blockedSources
     .filter((s) => isDiscouragedSourceUrl(s.url))
     .map((s) => s.id);
 
@@ -365,15 +389,46 @@ export async function runCollectionCleanup(
     ).length;
   }
 
-  const cityRows = await db
+  const venueCityMismatches = await db
     .select({
-      id: cities.id,
-      name: cities.name,
-      slug: cities.slug,
-      lat: cities.lat,
-      lng: cities.lng,
+      eventId: events.id,
+      venueCityId: venues.cityId,
     })
-    .from(cities);
+    .from(events)
+    .innerJoin(venues, eq(events.venueId, venues.id))
+    .where(sql`${events.cityId} != ${venues.cityId}`);
+
+  let venueCitySynced = 0;
+  for (const row of venueCityMismatches) {
+    await db
+      .update(events)
+      .set({ cityId: row.venueCityId, updatedAt: new Date() })
+      .where(eq(events.id, row.eventId));
+    venueCitySynced++;
+  }
+
+  const sourceCityMismatches = await db
+    .select({
+      eventId: events.id,
+      sourceCityId: sources.cityId,
+    })
+    .from(events)
+    .innerJoin(sources, eq(events.sourceId, sources.id))
+    .where(
+      and(
+        or(eq(sources.type, "venue"), eq(sources.type, "social")),
+        sql`${events.cityId} != ${sources.cityId}`
+      )
+    );
+
+  let sourceCitySynced = 0;
+  for (const row of sourceCityMismatches) {
+    await db
+      .update(events)
+      .set({ cityId: row.sourceCityId, updatedAt: new Date() })
+      .where(eq(events.id, row.eventId));
+    sourceCitySynced++;
+  }
 
   const now = new Date();
   const activeFuture = await db
@@ -389,37 +444,9 @@ export async function runCollectionCleanup(
     .leftJoin(venues, eq(events.venueId, venues.id))
     .where(and(eq(events.status, "active"), gte(events.startsAt, now)));
 
-  let cityReassigned = 0;
-  for (const row of activeFuture) {
-    const detected = resolveEventCityId(`${row.title} ${row.venueName ?? ""}`, cityRows);
-    if (detected && detected !== row.cityId) {
-      await db
-        .update(events)
-        .set({ cityId: detected, updatedAt: new Date() })
-        .where(eq(events.id, row.id));
-      cityReassigned++;
-    }
-  }
-
-  const refreshed =
-    cityReassigned > 0
-      ? await db
-          .select({
-            id: events.id,
-            cityId: events.cityId,
-            title: events.title,
-            startsAt: events.startsAt,
-            ticketUrl: events.ticketUrl,
-            venueName: venues.name,
-          })
-          .from(events)
-          .leftJoin(venues, eq(events.venueId, venues.id))
-          .where(and(eq(events.status, "active"), gte(events.startsAt, now)))
-      : activeFuture;
-
   const duplicateIds = new Set<string>();
-  const byCity = new Map<string, typeof refreshed>();
-  for (const row of refreshed) {
+  const byCity = new Map<string, typeof activeFuture>();
+  for (const row of activeFuture) {
     const list = byCity.get(row.cityId) ?? [];
     list.push(row);
     byCity.set(row.cityId, list);
@@ -432,6 +459,12 @@ export async function runCollectionCleanup(
       for (let j = i + 1; j < group.length; j++) {
         const b = group[j];
         if (duplicateIds.has(b.id)) continue;
+        if (
+          isFestivalEvent(a.title, a.venueName ?? "") ||
+          isFestivalEvent(b.title, b.venueName ?? "")
+        ) {
+          continue;
+        }
         const diffMs = Math.abs(a.startsAt.getTime() - b.startsAt.getTime());
         if (diffMs > 3 * 60 * 60 * 1000) continue;
         if (
@@ -472,7 +505,8 @@ export async function runCollectionCleanup(
       junkDeleted: junk.length + junkByTitle.length,
       discouragedSourcesDeactivated,
       eventsFromDiscouragedSources,
-      cityReassigned,
+      venueCitySynced,
+      sourceCitySynced,
       duplicatesRemoved: duplicatesRemoved.length,
       ...extraStats,
     },
@@ -484,7 +518,8 @@ export async function runCollectionCleanup(
     junkDeleted: junk.length + junkByTitle.length,
     discouragedSourcesDeactivated,
     eventsFromDiscouragedSources,
-    cityReassigned,
+    venueCitySynced,
+    sourceCitySynced,
     duplicatesRemoved: duplicatesRemoved.length,
   };
 }
@@ -506,6 +541,7 @@ export async function enqueueCollection(
       type: sources.type,
       platform: sources.platform,
       cityId: sources.cityId,
+      citySlug: cities.slug,
       cityName: cities.name,
     })
     .from(sources)
@@ -525,6 +561,7 @@ export async function enqueueCollection(
       type: r.type,
       platform: r.platform,
       cityId: r.cityId,
+      citySlug: r.citySlug,
       cityName: r.cityName,
     },
   }));
@@ -563,6 +600,7 @@ export async function executeCollection(
       type: sources.type,
       platform: sources.platform,
       cityId: sources.cityId,
+      citySlug: cities.slug,
       cityName: cities.name,
     })
     .from(sources)
