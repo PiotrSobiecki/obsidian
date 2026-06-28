@@ -99,7 +99,7 @@ export default function KoncertyPage() {
   return (
     <main className="min-h-screen bg-background">
       <Navbar />
-      <div className="container mx-auto min-w-0 max-w-full px-4 pb-16 pt-28">
+      <div className="container mx-auto px-4 pb-16 pt-28">
         <div className="mb-8">
           <h1 className="font-display text-4xl font-bold md:text-5xl">
             Znajdź <span className="text-primary">koncert</span>

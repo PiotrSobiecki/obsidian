@@ -25,7 +25,7 @@ export function ConcertSearch({
     totalCount !== undefined;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="rounded-lg border border-border bg-card p-6">
       <label htmlFor="concert-query" className="mb-2 block text-sm font-medium text-muted-foreground">
         Szukaj w {cityName}
       </label>
