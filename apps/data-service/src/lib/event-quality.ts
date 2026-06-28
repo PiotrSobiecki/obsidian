@@ -57,14 +57,23 @@ export function isDiscouragedSourceUrl(url: string): boolean {
 
 export function isJunkTitle(title: string): boolean {
   const t = title.trim();
+  const n = cityToken(t);
   if (t.length < 3) return true;
   if (/^(kup bilety?|otwórz dodatkowe|bilety|zobacz|sprawdź|więcej|wybierz)\b/i.test(t)) {
     return true;
   }
+  if (/^(kup bilety?|otworz dodatkowe|bilety|zobacz|sprawdz|wiecej|wybierz)\b/.test(n)) {
+    return true;
+  }
+  // samo „28.06.2026” albo sama data/godzina
   if (/^[\d.\s:,/-]+$/.test(t)) return true;
+  if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(t)) return true;
   if (/\.html?$/i.test(t)) return true;
   if (/^koncerty(\.html)?$/i.test(t)) return true;
-  if (/^terminy koncertów/i.test(t)) return true;
+  // rockmetal i podobne — tytuły stron, nie koncertów (z/bez polskich znaków)
+  if (/terminy koncert/.test(n)) return true;
+  if (/rockmetal\.pl/.test(n)) return true;
+  if (/\s-\s*koncerty\s*-/.test(t)) return true;
   if (/\|\s*koncerty\s*w\s*polsce/i.test(t)) return true;
   if (/koncerty\s*\d{4}\s*\|/i.test(t)) return true;
   if (/^kup bilet\b/i.test(t)) return true;

@@ -1,6 +1,6 @@
 "use client";
 
-import { POLISH_CITIES } from "@/data/cities-pl";
+import { ALL_POLAND_CITY, POLISH_CITIES } from "@/data/cities-pl";
 import type { DateRange } from "@/lib/api";
 import { Calendar } from "lucide-react";
 
@@ -46,6 +46,7 @@ export function ConcertFilters({
             className="w-full rounded-md border border-border bg-secondary px-3 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">Wybierz miasto</option>
+            <option value={ALL_POLAND_CITY.slug}>{ALL_POLAND_CITY.name}</option>
             {POLISH_CITIES.map((c) => (
               <option key={c.slug} value={c.slug}>
                 {c.name}

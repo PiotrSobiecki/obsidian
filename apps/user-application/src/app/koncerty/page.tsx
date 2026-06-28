@@ -6,10 +6,11 @@ import { Footer } from "@/components/ui/footer";
 import { ConcertFilters } from "@/components/concerts/concert-filters";
 import { ConcertSearch } from "@/components/concerts/concert-search";
 import { ConcertList } from "@/components/concerts/concert-list";
-import { POLISH_CITIES } from "@/data/cities-pl";
+import { ALL_POLAND_CITY, POLISH_CITIES } from "@/data/cities-pl";
 import { filterConcertsByQuery } from "@/lib/filter-concerts";
 import {
   fetchEvents,
+  isAllPolandCity,
   type ConcertEvent,
   type DateRange,
 } from "@/lib/api";
@@ -82,7 +83,11 @@ export default function KoncertyPage() {
   }, []);
 
   const cityName =
-    POLISH_CITIES.find((c) => c.slug === city)?.name ?? city;
+    city === ALL_POLAND_CITY.slug
+      ? "całej Polsce"
+      : (POLISH_CITIES.find((c) => c.slug === city)?.name ?? city);
+
+  const showEventCity = isAllPolandCity(city);
 
   const filteredEvents = useMemo(
     () => filterConcertsByQuery(events, query),
@@ -149,7 +154,7 @@ export default function KoncertyPage() {
         )}
 
         {searched && !loading && !error && (
-          <ConcertList events={filteredEvents} query={query} />
+          <ConcertList events={filteredEvents} query={query} showCity={showEventCity} />
         )}
 
         {!searched && !loading && (

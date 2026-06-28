@@ -8,9 +8,10 @@ import { formatEventDate, formatEventTime } from "@/lib/api";
 type ConcertCardProps = {
   event: ConcertEvent;
   showDate?: boolean;
+  showCity?: boolean;
 };
 
-export function ConcertCard({ event, showDate }: ConcertCardProps) {
+export function ConcertCard({ event, showDate, showCity }: ConcertCardProps) {
   const artists = event.artists?.length ? event.artists.join(", ") : null;
   const isToday =
     event.startsAt.slice(0, 10) === new Date().toISOString().slice(0, 10);
@@ -56,11 +57,18 @@ export function ConcertCard({ event, showDate }: ConcertCardProps) {
           </div>
           {event.venueName && (
             <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-primary" strokeWidth={2} />
+              <MapPin className="h-4 w-4 shrink-0 text-primary" strokeWidth={2} />
               <span>
                 {event.venueName}
+                {showCity && event.cityName ? `, ${event.cityName}` : ""}
                 {event.venueAddress ? `, ${event.venueAddress}` : ""}
               </span>
+            </div>
+          )}
+          {!event.venueName && showCity && event.cityName && (
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 shrink-0 text-primary" strokeWidth={2} />
+              <span>{event.cityName}</span>
             </div>
           )}
           {price && (

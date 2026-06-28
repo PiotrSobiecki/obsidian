@@ -24,6 +24,12 @@ export type EventsResponse = {
 
 export type DateRange = "day" | "3days" | "7days" | "3months";
 
+export const ALL_POLAND_SLUG = "cala-polska";
+
+export function isAllPolandCity(slug: string): boolean {
+  return slug === ALL_POLAND_SLUG;
+}
+
 export function getApiUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787";
 }

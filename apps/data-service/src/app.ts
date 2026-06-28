@@ -11,6 +11,7 @@ import {
 import { enqueueDiscovery, executeDiscovery } from "./cron/weekly-discovery";
 import { inArray } from "drizzle-orm";
 import { resolveEventDateRange } from "./lib/date-range";
+import { ALL_POLAND_CITY, isAllPolandSlug } from "./lib/all-poland";
 import { hasEventSource } from "./lib/real-events";
 import { sanitizeTicketUrl, ticketProviderLabel } from "./lib/ticket-url";
 import type { WorkerBindings } from "./types";
@@ -86,14 +87,23 @@ app.get("/events", async (c) => {
   try {
     const db = getDb(c.env);
 
-    const [city] = await db
-      .select()
-      .from(cities)
-      .where(eq(cities.slug, citySlug))
-      .limit(1);
+    let cityMeta: { name: string; slug: string };
+    let cityId: string | undefined;
 
-    if (!city) {
-      return c.json({ error: "City not found" }, 404);
+    if (isAllPolandSlug(citySlug)) {
+      cityMeta = ALL_POLAND_CITY;
+    } else {
+      const [city] = await db
+        .select()
+        .from(cities)
+        .where(eq(cities.slug, citySlug))
+        .limit(1);
+
+      if (!city) {
+        return c.json({ error: "City not found" }, 404);
+      }
+      cityMeta = { name: city.name, slug: city.slug };
+      cityId = city.id;
     }
 
     const { dateFrom, dateTo } = resolveEventDateRange(from, to, range);
@@ -121,7 +131,7 @@ app.get("/events", async (c) => {
       .leftJoin(venues, eq(events.venueId, venues.id))
       .where(
         and(
-          eq(events.cityId, city.id),
+          cityId ? eq(events.cityId, cityId) : undefined,
           eq(events.status, "active"),
           hasEventSource,
           gte(events.startsAt, effectiveFrom),
@@ -131,7 +141,7 @@ app.get("/events", async (c) => {
       .orderBy(asc(events.startsAt));
 
     return c.json({
-      city: { name: city.name, slug: city.slug },
+      city: cityMeta,
       from: effectiveFrom.toISOString(),
       to: dateTo.toISOString(),
       events: rows.map((row) => {

@@ -94,6 +94,7 @@ export function parsePolishDateText(text: string): string | null {
 
 function looksLikeEventLink(href: string, label: string): boolean {
   const hay = `${href} ${label}`.toLowerCase();
+  if (/rockmetal\.pl|stage24\.pl|terminy koncert/i.test(hay)) return false;
   if (/fotorelacja|galeria|news|aktualnosci|wpis|category|tag|author|feed|polityka|kontakt/i.test(hay)) {
     return false;
   }

@@ -17,7 +17,7 @@ export function filterConcertsByQuery(
 
   return events.filter((event) => {
     const haystack = normalize(
-      [event.title, event.venueName, event.venueAddress, ...(event.artists ?? [])]
+      [event.title, event.venueName, event.venueAddress, event.cityName, ...(event.artists ?? [])]
         .filter(Boolean)
         .join(" ")
     );

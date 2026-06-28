@@ -4,9 +4,10 @@ import type { ConcertEvent } from "@/lib/api";
 type ConcertListProps = {
   events: ConcertEvent[];
   query?: string;
+  showCity?: boolean;
 };
 
-export function ConcertList({ events, query }: ConcertListProps) {
+export function ConcertList({ events, query, showCity }: ConcertListProps) {
   if (events.length === 0) {
     const trimmed = query?.trim();
     return (
@@ -31,7 +32,7 @@ export function ConcertList({ events, query }: ConcertListProps) {
     <ul className="grid w-full list-none grid-cols-1 gap-4 p-0 md:grid-cols-2">
       {sorted.map((event) => (
         <li key={event.id} className="min-w-0">
-          <ConcertCard event={event} showDate />
+          <ConcertCard event={event} showDate showCity={showCity} />
         </li>
       ))}
     </ul>

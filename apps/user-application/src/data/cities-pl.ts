@@ -1,3 +1,5 @@
+export const ALL_POLAND_CITY = { name: "Cała Polska", slug: "cala-polska" } as const;
+
 export const POLISH_CITIES = [
   { name: "Warszawa", slug: "warszawa" },
   { name: "Kraków", slug: "krakow" },

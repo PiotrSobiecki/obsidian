@@ -3,6 +3,7 @@ import { getDb } from "../db/client";
 import { cities, events, ingestionRuns, sources, venues } from "../db/schema";
 import { computeFingerprint } from "../lib/fingerprint";
 import {
+  isDiscouragedSourceUrl,
   isJunkTitle,
   normalizeVenueName,
   preferEventTitle,
@@ -79,6 +80,17 @@ export async function collectSource(
   now: Date = new Date()
 ): Promise<number> {
   const db = getDb(env);
+
+  if (isDiscouragedSourceUrl(source.url)) {
+    await db.delete(events).where(eq(events.sourceId, source.id));
+    await db
+      .update(sources)
+      .set({ status: "inactive", lastFetchedAt: new Date() })
+      .where(eq(sources.id, source.id));
+    console.log(`[collector] Dezaktywowano źródło (blocklist): ${source.url}`);
+    return 0;
+  }
+
   let eventsUpserted = 0;
 
   const html = await fetchPage(source.url, env.BROWSER);
@@ -300,12 +312,55 @@ export async function runCollectionCleanup(
         ilike(events.title, "Otwórz dodatkowe%"),
         ilike(events.title, "%.html"),
         ilike(events.title, "koncerty.html"),
-        ilike(events.title, "Terminy koncertów%"),
+        ilike(events.title, "%Terminy koncert%"),
+        ilike(events.title, "%rockmetal.pl%"),
         ilike(events.title, "%| Koncerty w Polsce%"),
-        ilike(events.title, "% koncerty 2026 |%")
+        ilike(events.title, "% koncerty 2026 |%"),
+        ilike(events.title, "% - koncerty - %")
       )
     )
     .returning({ id: events.id });
+
+  const activeForJunkCheck = await db
+    .select({ id: events.id, title: events.title })
+    .from(events)
+    .where(eq(events.status, "active"));
+
+  const junkTitleIds = activeForJunkCheck
+    .filter((row) => isJunkTitle(row.title))
+    .map((row) => row.id);
+
+  const junkByTitle =
+    junkTitleIds.length > 0
+      ? await db
+          .delete(events)
+          .where(inArray(events.id, junkTitleIds))
+          .returning({ id: events.id })
+      : [];
+
+  const allSources = await db.select({ id: sources.id, url: sources.url }).from(sources);
+  const discouragedSourceIds = allSources
+    .filter((s) => isDiscouragedSourceUrl(s.url))
+    .map((s) => s.id);
+
+  let discouragedSourcesDeactivated = 0;
+  let eventsFromDiscouragedSources = 0;
+  if (discouragedSourceIds.length > 0) {
+    discouragedSourcesDeactivated = (
+      await db
+        .update(sources)
+        .set({ status: "inactive" })
+        .where(inArray(sources.id, discouragedSourceIds))
+        .returning({ id: sources.id })
+    ).length;
+
+    eventsFromDiscouragedSources = (
+      await db
+        .delete(events)
+        .where(inArray(events.sourceId, discouragedSourceIds))
+        .returning({ id: events.id })
+    ).length;
+  }
 
   const cityRows = await db
     .select({
@@ -411,7 +466,9 @@ export async function runCollectionCleanup(
     statsJson: {
       eventsMarkedPast: stale.length,
       eventsDeleted: deleted.length,
-      junkDeleted: junk.length,
+      junkDeleted: junk.length + junkByTitle.length,
+      discouragedSourcesDeactivated,
+      eventsFromDiscouragedSources,
       cityReassigned,
       duplicatesRemoved: duplicatesRemoved.length,
       ...extraStats,
@@ -421,7 +478,9 @@ export async function runCollectionCleanup(
   return {
     eventsMarkedPast: stale.length,
     eventsDeleted: deleted.length,
-    junkDeleted: junk.length,
+    junkDeleted: junk.length + junkByTitle.length,
+    discouragedSourcesDeactivated,
+    eventsFromDiscouragedSources,
     cityReassigned,
     duplicatesRemoved: duplicatesRemoved.length,
   };
