@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "wrangler deploy --dry-run",
-    "deploy": "wrangler deploy --env production",
+    "deploy:prod": "wrangler deploy --env production",
     "db:generate": "node scripts/db-generate.mjs --env dev",
     "db:generate:dev": "node scripts/db-generate.mjs --env dev",
     "db:generate:prod": "node scripts/db-generate.mjs --env production",

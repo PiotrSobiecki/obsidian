@@ -21,7 +21,9 @@
     "db:seed:prod": "pnpm --filter @obsidian/data-service db:seed:prod",
     "collect:dev": "pnpm --filter @obsidian/data-service collect:dev",
     "discover:dev": "pnpm --filter @obsidian/data-service discover:dev",
-    "ingest:dev": "pnpm --filter @obsidian/data-service ingest:dev"
+    "ingest:dev": "pnpm --filter @obsidian/data-service ingest:dev",
+    "deploy:data-service": "pnpm --filter @obsidian/data-service deploy:prod",
+    "deploy:user-application": "pnpm --filter @obsidian/user-application deploy:prod"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

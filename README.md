@@ -71,10 +71,14 @@ pnpm db:generate:prod
 pnpm db:migrate:prod
 
 # API (produkcja — używa .production.vars)
-cd apps/data-service && pnpm deploy
+pnpm deploy:data-service
+# albo: cd apps/data-service && pnpm run deploy:prod
 
 # Frontend (produkcja — build z .env.production)
-cd apps/user-application && pnpm deploy
+pnpm deploy:user-application
+# albo: cd apps/user-application && pnpm run deploy:prod
+
+# Uwaga: `pnpm deploy` to wbudowana komenda pnpm — nie uruchamia Wranglera.
 ```
 
 ## API
