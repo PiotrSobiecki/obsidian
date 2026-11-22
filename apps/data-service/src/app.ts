@@ -39,12 +39,28 @@ app.use(
   })
 );
 
+/** Porównanie stałoczasowe — zwykłe `!==` zdradza długość prefiksu zgodnego z kluczem. */
+function secretsEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const x = enc.encode(a);
+  const y = enc.encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  }
+  return diff === 0;
+}
+
+// Fail-closed: bez skonfigurowanego API_KEY trasy /admin/* są zamknięte.
+// Wcześniej brak sekretu otwierał je dla każdego (collect, discover, cleanup).
 function requireAdmin(c: { req: { header: (name: string) => string | undefined }; env: WorkerBindings }) {
-  const apiKey = c.req.header("x-api-key");
-  if (c.env.API_KEY && apiKey !== c.env.API_KEY) {
+  const expected = c.env.API_KEY;
+  if (!expected) {
+    console.error("[admin] API_KEY nie jest ustawiony — odrzucam żądanie do /admin/*");
     return false;
   }
-  return true;
+  const apiKey = c.req.header("x-api-key");
+  return typeof apiKey === "string" && secretsEqual(apiKey, expected);
 }
 
 app.get("/health", (c) => c.json({ status: "ok" }));
